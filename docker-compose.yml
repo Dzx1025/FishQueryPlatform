@@ -82,12 +82,7 @@ services:
       NEO4J_PASSWORD: neo4jpassword
       QDRANT_URL: http://qdrant:6334
       DEBUG: "true"
-    command:
-      - /bin/sh
-      - -c
-      - |
-        python manage.py migrate
-        python manage.py runserver 0.0.0.0:8000
+    command: python manage.py runserver 0.0.0.0:8000
 
 volumes:
   postgis-data:
