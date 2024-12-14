@@ -58,6 +58,7 @@ services:
       HASURA_GRAPHQL_DEV_MODE: "true"
       HASURA_GRAPHQL_ADMIN_SECRET: hasuraadminsecret
       HASURA_GRAPHQL_UNAUTHORIZED_ROLE: anonymous
+      HASURA_GRAPHQL_JWT_SECRET: '{"type": "HS256", "key": "NDQ4DWOdxecVnXEfWuAinYBji9RoEfotLowCkSP0xm8"}'
 
   # Django application
   django:
