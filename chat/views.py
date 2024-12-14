@@ -1,19 +1,13 @@
-from rest_framework import viewsets, status
+from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
-from chat.models import Conversation, Message
-from chat.serializers import (
-    ConversationSerializer,
-    MessageSerializer,
-    MessageCreateSerializer,
-)
-
+from .models import Conversation, Message
+from .serializers import ConversationSerializer, MessageSerializer
 
 class ConversationViewSet(viewsets.ModelViewSet):
     serializer_class = ConversationSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         return Conversation.objects.filter(user=self.request.user)
@@ -21,29 +15,24 @@ class ConversationViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
-    @action(detail=True, methods=["post"])
-    def send_message(self, request, pk=None):
+    @action(detail=True, methods=['get'])
+    def messages(self, request, pk=None):
         conversation = self.get_object()
-        serializer = MessageCreateSerializer(data=request.data)
+        messages = conversation.messages.all()
+        serializer = MessageSerializer(messages, many=True)
+        return Response(serializer.data)
 
-        if serializer.is_valid():
-            message = Message.objects.create(
-                conversation=conversation,
-                content=serializer.validated_data["content"],
-                is_user_message=True,
-            )
+class MessageViewSet(viewsets.ModelViewSet):
+    serializer_class = MessageSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
-            # Here you can add your chatbot logic to generate a response
-            # For example:
-            bot_response = self.generate_bot_response(message.content)
-            bot_message = Message.objects.create(
-                conversation=conversation, content=bot_response, is_user_message=False
-            )
+    def get_queryset(self):
+        return Message.objects.filter(user=self.request.user)
 
-            return Response(MessageSerializer(bot_message).data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    def generate_bot_response(self, user_message):
-        # Add your chatbot logic here
-        # This is a simple example - replace with your actual implementation
-        return f"You said: {user_message}. This is a placeholder response."
+    def perform_create(self, serializer):
+        conversation = get_object_or_404(
+            Conversation,
+            id=self.request.data.get('conversation'),
+            user=self.request.user
+        )
+        serializer.save(user=self.request.user, conversation=conversation)
