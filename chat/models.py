@@ -12,9 +12,6 @@ class Conversation(models.Model):
     created_at = models.DateTimeField(
         auto_now_add=True, help_text="When this conversation was created"
     )
-    title = models.CharField(
-        max_length=255, blank=True, help_text="Title of the conversation"
-    )
 
     class Meta:
         ordering = ["-created_at"]
