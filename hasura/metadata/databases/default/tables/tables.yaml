@@ -1,0 +1,2 @@
+- "!include public_chat_conversation.yaml"
+- "!include public_chat_message.yaml"
