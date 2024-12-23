@@ -1,0 +1,43 @@
+table:
+  name: chat_message
+  schema: public
+object_relationships:
+  - name: chat_conversation
+    using:
+      foreign_key_constraint_on: conversation_id
+insert_permissions:
+  - role: user
+    permission:
+      check:
+        user_id:
+          _eq: X-Hasura-User-Id
+      columns:
+        - content
+        - conversation_id
+        - timestamp
+        - user_id
+    comment: ""
+select_permissions:
+  - role: anonymous
+    permission:
+      columns:
+        - content
+        - message_type
+        - timestamp
+      filter:
+        user_id:
+          _eq: X-Hasura-User-Id
+    comment: ""
+  - role: user
+    permission:
+      columns:
+        - conversation_id
+        - id
+        - message_type
+        - user_id
+        - content
+        - timestamp
+      filter:
+        user_id:
+          _eq: X-Hasura-User-Id
+    comment: ""
