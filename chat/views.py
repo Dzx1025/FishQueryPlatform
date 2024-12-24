@@ -1,16 +1,17 @@
 import os
-
+import logging
 from qdrant_client.http.models import ScoredPoint
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.request import Request
+from rest_framework import viewsets
 from django.shortcuts import get_object_or_404
 from .models import Conversation, Message
 from .serializers import ConversationSerializer, MessageSerializer
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
-from typing import List
-import logging
+from typing import List, cast
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
 
     serializer_class = ConversationSerializer
     permission_classes = [permissions.IsAuthenticated]
-    COLLECTION_NAME = "fishing_rules"
+    COLLECTION_NAME = os.getenv("QDRANT_COLLECTION_NAME", "fishing_rules")
 
     # Singleton instances for expensive resources
     _embedding_model = None
@@ -77,7 +78,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
             raise
 
     def perform_vector_search(
-        self, embedding: List[float], limit: int = 3
+            self, embedding: List[float], limit: int = 3
     ) -> List[ScoredPoint]:
         """Perform vector search in Qdrant"""
         try:
@@ -92,7 +93,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
             raise
 
     def create_message(
-        self, conversation, user, content: str, message_type: str
+            self, conversation, user, content: str, message_type: str
     ) -> Message:
         """Helper method to create a message"""
         try:
@@ -211,9 +212,10 @@ class MessageViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """Create a new message in the specified conversation"""
+        request = cast(Request, self.request)
         conversation = get_object_or_404(
             Conversation,
-            id=self.request.data.get("conversation"),
-            user=self.request.user,
+            id=request.data.get("conversation"),
+            user=request.user,
         )
-        serializer.save(user=self.request.user, conversation=conversation)
+        serializer.save(user=request.user, conversation=conversation)

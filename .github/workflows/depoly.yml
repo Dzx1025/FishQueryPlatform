@@ -41,7 +41,7 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
+          port: 22
           script: |
             cd ${{ secrets.DEPLOY_PATH }}
             tar -xvf platform.tar
