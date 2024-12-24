@@ -211,4 +211,5 @@ CORS_ALLOW_HEADERS = [
 
 CSRF_TRUSTED_ORIGINS = [
     "https://fishingchat.dzx1025.com",
+    "https://django.chatbox.dzx1025.com",
 ]
