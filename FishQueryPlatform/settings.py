@@ -31,8 +31,8 @@ DEBUG = False
 ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
-    "django.chatbox.dzx1025.com",
-    "fishingchat.dzx1025.com",
+    "django.fishquery.dzx1025.com",
+    "fishquery.dzx1025.com",
 ]
 
 # Application definition
