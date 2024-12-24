@@ -67,7 +67,6 @@ services:
       HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_ADMIN_SECRET}
       HASURA_GRAPHQL_UNAUTHORIZED_ROLE: anonymous
       HASURA_GRAPHQL_JWT_SECRET: ${HASURA_JWT_SECRET}
-      HASURA_GRAPHQL_CORS_DOMAIN: ${ALLOWED_DOMAINS}
       HASURA_GRAPHQL_ENABLE_TELEMETRY: "false"
       HASURA_GRAPHQL_LOG_LEVEL: warn
 
@@ -79,6 +78,8 @@ services:
     restart: unless-stopped
     volumes:
       - .:/app
+      - static_volume:/app/static
+      - media_volume:/app/media
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -104,3 +105,5 @@ volumes:
   neo4j-logs:
   neo4j-plugins:
   qdrant-data:
+  static_volume:
+  media_volume:
