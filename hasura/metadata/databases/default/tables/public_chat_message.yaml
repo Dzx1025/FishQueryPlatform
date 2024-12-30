@@ -2,6 +2,9 @@ table:
   name: chat_message
   schema: public
 object_relationships:
+  - name: auth_user
+    using:
+      foreign_key_constraint_on: user_id
   - name: chat_conversation
     using:
       foreign_key_constraint_on: conversation_id
