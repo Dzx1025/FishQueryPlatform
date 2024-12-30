@@ -1,0 +1,18 @@
+table:
+  name: auth_user
+  schema: public
+array_relationships:
+  - name: chat_conversations
+    using:
+      foreign_key_constraint_on:
+        column: user_id
+        table:
+          name: chat_conversation
+          schema: public
+  - name: chat_messages
+    using:
+      foreign_key_constraint_on:
+        column: user_id
+        table:
+          name: chat_message
+          schema: public
