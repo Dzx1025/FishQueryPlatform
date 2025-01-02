@@ -10,12 +10,17 @@ services:
     volumes:
       - postgis-data:/var/lib/postgresql/data
     ports:
-      - "127.0.0.1:5432:5432" # Only accessible locally
+      - "127.0.0.1:5432:5432"
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER}" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
       interval: 30s
       timeout: 5s
       retries: 3
+    networks:
+      default:
+        aliases:
+          - db.local
+          - postgis.local
 
   # Neo4j graph database
   neo4j:
@@ -24,10 +29,6 @@ services:
     environment:
       NEO4J_AUTH: ${NEO4J_USER}/${NEO4J_PASSWORD}
       NEO4J_PLUGINS: '["apoc"]'
-      # Production settings
-      NEO4J_dbms_memory_heap_initial__size: 2G
-      NEO4J_dbms_memory_heap_max__size: 4G
-      NEO4J_dbms_memory_pagecache_size: 1G
     ports:
       - "127.0.0.1:7474:7474" # HTTP
       - "127.0.0.1:7687:7687" # Bolt
@@ -35,6 +36,11 @@ services:
       - neo4j-data:/data
       - neo4j-logs:/logs
       - neo4j-plugins:/plugins
+    networks:
+      default:
+        aliases:
+          - graph.local
+          - neo4j.local
 
   # Qdrant vector database
   qdrant:
@@ -48,6 +54,11 @@ services:
     environment:
       QDRANT__SERVICE__GRPC_PORT: 6333
       QDRANT__SERVICE__HTTP_PORT: 6334
+    networks:
+      default:
+        aliases:
+          - vector.local
+          - qdrant.local
 
   # Hasura GraphQL engine
   hasura:
@@ -62,13 +73,18 @@ services:
       - ./hasura/:/hasura/
     environment:
       HASURA_GRAPHQL_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgis:5432/${POSTGRES_DB}
-      HASURA_GRAPHQL_ENABLE_CONSOLE: "false" # Disable in production
-      HASURA_GRAPHQL_DEV_MODE: "false"
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "true" # Disable in production
+      HASURA_GRAPHQL_DEV_MODE: "true"
       HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_ADMIN_SECRET}
       HASURA_GRAPHQL_UNAUTHORIZED_ROLE: anonymous
       HASURA_GRAPHQL_JWT_SECRET: ${HASURA_JWT_SECRET}
       HASURA_GRAPHQL_ENABLE_TELEMETRY: "false"
       HASURA_GRAPHQL_LOG_LEVEL: warn
+    networks:
+      default:
+        aliases:
+          - graphql.local
+          - hasura.local
 
   # Django application
   django:
@@ -78,8 +94,6 @@ services:
     restart: unless-stopped
     volumes:
       - .:/app
-      - static_volume:/app/static
-      - media_volume:/app/media
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -98,6 +112,11 @@ services:
       DEBUG: "false"
       SECRET_KEY: ${DJANGO_SECRET_KEY}
     command: python manage.py runserver 0.0.0.0:8000
+    networks:
+      default:
+        aliases:
+          - api.local
+          - django.local
 
 volumes:
   postgis-data:
@@ -105,5 +124,7 @@ volumes:
   neo4j-logs:
   neo4j-plugins:
   qdrant-data:
-  static_volume:
-  media_volume:
+
+networks:
+  default:
+    name: app_network
