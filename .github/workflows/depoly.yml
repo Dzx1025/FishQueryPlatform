@@ -46,4 +46,5 @@ jobs:
             cd ${{ secrets.DEPLOY_PATH }}
             tar -xvf platform.tar
             rm platform.tar
+            docker compose --env-file ${{ secrets.ENV_FILE_PATH }} down
             docker compose --env-file ${{ secrets.ENV_FILE_PATH }} up -d
