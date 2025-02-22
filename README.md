@@ -1,6 +1,6 @@
 # Fish Query Project Platform
 
-## How to set up services manually at a new host
+## How to set up services
 
 ### 1. Clone this repo
 
@@ -8,29 +8,13 @@
 git clone https://github.com/Dzx1025/FishQueryPlatform.git
 ```
 
-### 2. Environment variables
-
-Create a file `.env` in the root directory of this project. Set values of the following variables:
-
-```dotenv
-POSTGRES_DB=db_name
-POSTGRES_USER=your_name
-POSTGRES_PASSWORD=your_password
-POSTGRES_HOST=postgis
-NEO4J_USER=your_name
-NEO4J_PASSWORD=your_password
-HASURA_ADMIN_SECRET=hasura-secret
-HASURA_JWT_SECRET={"type":"HS256","key":"your_passphrase"}
-DJANGO_SECRET_KEY=your_passphrase
-```
-
-### 3. Launch services
+### 2. Launch services
 
 ```bash
 docker compose --env-file ${ENV_FILE_PATH} up -d
 ```
 
-### 4. Set up services
+### 3. Create a superuser
 
 Go inside the Django container:
 
@@ -38,14 +22,32 @@ Go inside the Django container:
 docker compose exec django bash
 ```
 
-Run `python manage.py migrate`, then `python manage.py createsuperuser`
+Run `python manage.py createsuperuser` to create a superuser.
 
-Moreover, `python manage.py collectstatic`
+## Nginx configuration example
 
-Go inside the Hasura container:
+```nginx
+server {
+    server_name django.fishquery.dzx1025.com;
+    client_max_body_size 100M;
 
-```bash
-docker compose exec hasura bash
+    # Static files location for Django admin and other collected static files
+    location /static/ {
+        alias /yourpath/staticfiles/;
+        types {
+            text/css css;
+            application/javascript js;
+            image/svg+xml svg;
+        }
+    }
+
+    # Main API location
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
 ```
-
-Run `hasura-cli metadata apply`

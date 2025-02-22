@@ -36,10 +36,15 @@ RUN gdal-config --version
 # Install Python dependencies
 COPY requirements.txt /app/
 
-# Install GDAL and Python dependencies
+# Install GDAL and Python dependencies including development packages
 RUN pip install --no-cache-dir wheel setuptools \
     && pip install --no-cache-dir GDAL==$(gdal-config --version) \
-    && pip install --no-cache-dir -r requirements.txt
-
-# Copy project
-COPY . /app/
+    && pip install --no-cache-dir -r requirements.txt \
+    # Added development tools
+    && pip install --no-cache-dir \
+    debugpy \
+    django-debug-toolbar \
+    ipdb \
+    pytest \
+    pytest-django \
+    pytest-cov
