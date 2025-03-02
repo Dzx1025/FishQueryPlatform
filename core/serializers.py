@@ -113,7 +113,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     """
     Serializer for user profile information and updates
     """
-    subscription_status = serializers.SerializerMethodField()
+    is_subscription_active = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -122,18 +122,18 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'email',
             'username',
             'subscription_type',
-            'subscription_status',
-            'daily_chat_quota',
-            'chats_used_today',
+            'is_subscription_active',
+            'daily_message_quota',
+            'messages_used_today',
             'subscription_expiry'
         )
         read_only_fields = (
             'id',
             'email',
             'subscription_type',
-            'subscription_status',
-            'daily_chat_quota',
-            'chats_used_today',
+            'is_subscription_active',
+            'daily_message_quota',
+            'messages_used_today',
             'subscription_expiry'
         )
 
@@ -150,12 +150,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
         return attrs
 
-    def get_subscription_status(self, obj):
+    def get_is_subscription_active(self, obj):
         """
         Return the active status of the subscription
         """
-        if not obj.subscription_expiry:
-            return "inactive"
-        return "active" if obj.subscription_expiry > serializers.DateTimeField().to_representation(
-            serializers.timezone.now()
-        ) else "expired"
+        return obj.is_subscription_active()

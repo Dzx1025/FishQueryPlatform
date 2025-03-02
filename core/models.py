@@ -74,17 +74,17 @@ class CustomUser(AbstractUser):
     )
 
     # Chat quota management
-    daily_chat_quota = models.IntegerField(
+    daily_message_quota = models.IntegerField(
         default=10,
         verbose_name="Daily Chat Quota",
         help_text="Maximum number of chats allowed per day"
     )
-    chats_used_today = models.IntegerField(
+    messages_used_today = models.IntegerField(
         default=0,
         verbose_name="Chats Used Today",
         help_text="Number of chats used today"
     )
-    last_chat_reset = models.DateField(
+    last_message_reset = models.DateField(
         default=timezone.now,
         verbose_name="Last Chat Counter Reset",
         help_text="Date when the chat counter was last reset"
@@ -123,23 +123,31 @@ class CustomUser(AbstractUser):
     def __str__(self):
         return self.email
 
-    def reset_daily_chat_counter(self):
+    def reset_daily_quota(self):
         """Reset the daily chat counter if it's a new day"""
         today = timezone.now().date()
-        if self.last_chat_reset != today:
-            self.chats_used_today = 0
-            self.last_chat_reset = today
-            self.save(update_fields=['chats_used_today', 'last_chat_reset'])
+        if self.last_message_reset != today:
+            self.messages_used_today = 0
+            self.last_message_reset = today
+            self.save(update_fields=['messages_used_today', 'last_message_reset'])
 
-    def can_chat(self):
+    def can_send_message(self):
         """Check if the user can chat based on their quota"""
-        self.reset_daily_chat_counter()
-        return self.chats_used_today < self.daily_chat_quota
+        self.reset_daily_quota()
+        return self.messages_used_today < self.daily_message_quota
 
-    def use_chat(self):
+    def increment_message_count(self):
         """Use one chat from the quota if available"""
-        if self.can_chat():
-            self.chats_used_today += 1
-            self.save(update_fields=['chats_used_today'])
+        if self.can_send_message():
+            self.messages_used_today += 1
+            self.save(update_fields=['messages_used_today'])
             return True
         return False
+
+    def is_subscription_active(self):
+        """Check if the user's subscription is active"""
+        if self.subscription_type == 'free':
+            return True
+        if not self.subscription_expiry:
+            return False
+        return timezone.now() < self.subscription_expiry

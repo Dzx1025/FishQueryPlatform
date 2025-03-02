@@ -32,7 +32,7 @@ class CustomUserAdmin(UserAdmin):
 
     # Rest of your class remains the same
     model = CustomUser
-    list_display = ('email', 'username', 'is_staff', 'subscription_type', 'daily_chat_quota')
+    list_display = ('email', 'username', 'is_staff', 'subscription_type', 'daily_message_quota')
     list_filter = ('is_staff', 'is_superuser', 'subscription_type')
     search_fields = ('email', 'username')
     ordering = ('email',)
@@ -44,7 +44,7 @@ class CustomUserAdmin(UserAdmin):
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
         }),
         (_('Important dates'), {'fields': ('last_login', 'date_joined')}),
-        (_('Chat Management'), {'fields': ('daily_chat_quota', 'chats_used_today', 'last_chat_reset')}),
+        (_('Chat Management'), {'fields': ('daily_message_quota', 'messages_used_today', 'last_message_reset')}),
         (_('Subscription'), {'fields': ('subscription_type', 'subscription_expiry')}),
     )
 
