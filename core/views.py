@@ -177,7 +177,7 @@ class UserProfileAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        request.user.reset_daily_chat_counter()
+        request.user.reset_daily_quota()
 
         serializer = UserProfileSerializer(request.user)
         return Response({

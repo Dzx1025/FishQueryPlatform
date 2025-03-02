@@ -8,13 +8,13 @@ def update_chat_usage(user):
     """
     # Reset counter if it's a new day
     today = date.today()
-    if user.last_chat_reset != today:
-        user.chats_used_today = 0
-        user.last_chat_reset = today
+    if user.last_message_reset != today:
+        user.messages_used_today = 0
+        user.last_message_reset = today
 
     # Check quota and increment if allowed
-    if user.chats_used_today < user.daily_chat_quota:
-        user.chats_used_today += 1
+    if user.messages_used_today < user.daily_message_quota:
+        user.messages_used_today += 1
         user.save()
         return True
     return False
