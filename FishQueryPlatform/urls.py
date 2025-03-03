@@ -39,9 +39,10 @@ urlpatterns = [
     path("admin/", admin.site.urls),
 
     # Core app URLs
-    path("api/", include("core.urls")),
+    path("api/auth/", include("core.urls")),
 
     # Chat app URLs
+    path("api/chat/", include("chats.urls")),
 
     # Swagger URLs
     re_path(
