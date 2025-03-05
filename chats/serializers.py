@@ -11,16 +11,3 @@ class MessageSerializer(serializers.ModelSerializer):
 
 class ChatRequestSerializer(serializers.Serializer):
     message = serializers.CharField(required=True)
-
-
-class ChatResponseSerializer(serializers.Serializer):
-    chat_id = serializers.UUIDField()
-    title = serializers.CharField()
-    user_message = MessageSerializer()
-    assistant_message = MessageSerializer()
-
-
-class ChatHistorySerializer(serializers.Serializer):
-    chat_id = serializers.UUIDField()
-    title = serializers.CharField()
-    messages = MessageSerializer(many=True)
