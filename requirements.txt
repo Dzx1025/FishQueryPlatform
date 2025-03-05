@@ -16,3 +16,5 @@ qdrant-client==1.12.1
 sentence-transformers>=3.3.1
 requests~=2.32.3
 openai~=1.60.1
+loguru~=0.7.3
+asgiref~=3.8.1
