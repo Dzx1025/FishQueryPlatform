@@ -103,7 +103,6 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         """
         data = super().to_representation(instance)
         return {
-            'user_id': instance.id,
             'email': instance.email,
             'username': instance.username
         }
@@ -118,7 +117,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = (
-            'id',
             'email',
             'username',
             'subscription_type',
@@ -128,7 +126,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'subscription_expiry'
         )
         read_only_fields = (
-            'id',
             'email',
             'subscription_type',
             'is_subscription_active',

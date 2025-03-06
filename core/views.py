@@ -1,13 +1,11 @@
 from rest_framework import status
 from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.conf import settings
-from django.utils import timezone
-from datetime import date
 
+from .responses import APIResponse
 from .serializers import (
     CustomTokenObtainPairSerializer,
     UserRegistrationSerializer,
@@ -51,31 +49,28 @@ class LoginAPIView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
     def post(self, request, *args, **kwargs):
-        response = super().post(request, *args, **kwargs)
+        try:
+            response = super().post(request, *args, **kwargs)
 
-        if response.status_code == status.HTTP_200_OK:
-            access_token = response.data.get('access')
-            refresh_token = response.data.get('refresh')
+            if response.status_code == status.HTTP_200_OK:
+                access_token = response.data.get('access')
+                refresh_token = response.data.get('refresh')
+                email = response.data.get('email')
 
-            user_id = response.data.get('user_id')
-            email = response.data.get('email')
-
-            response = set_jwt_cookies(response, access_token, refresh_token)
-
-            response.data = {
-                'status': 'success',
-                'message': 'Login successful',
-                'data': {
-                    'user_id': user_id,
-                    'email': email
-                }
-            }
-
-        return response
+                response = APIResponse.success(
+                    data={'email': email},
+                    message="Login successful"
+                )
+                return set_jwt_cookies(response, access_token, refresh_token)
+        except Exception as e:
+            return APIResponse.error(
+                message=e.args[0],
+                code=status.HTTP_401_UNAUTHORIZED
+            )
 
 
 class RegisterAPIView(APIView):
-    permission_classes = []
+    permission_classes = [AllowAny]
 
     def post(self, request):
         serializer = UserRegistrationSerializer(data=request.data)
@@ -83,26 +78,20 @@ class RegisterAPIView(APIView):
             user = serializer.save()
             refresh = RefreshToken.for_user(user)
 
-            response = Response({
-                'status': 'success',
-                'message': 'Registration successful',
-                'data': {
-                    'user_id': user.id,
-                    'email': user.email
-                }
-            }, status=status.HTTP_201_CREATED)
+            response = APIResponse.success(
+                data={'email': user.email},
+                message="Registration successful",
+                code=status.HTTP_201_CREATED
+            )
 
             access_token = str(refresh.access_token)
             refresh_token = str(refresh)
-            response = set_jwt_cookies(response, access_token, refresh_token)
+            return set_jwt_cookies(response, access_token, refresh_token)
 
-            return response
-
-        return Response({
-            'status': 'error',
-            'message': 'Validation error',
-            'errors': serializer.errors
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return APIResponse.error(
+            errors=serializer.errors,
+            message="Validation error"
+        )
 
 
 class LogoutAPIView(APIView):
@@ -115,10 +104,7 @@ class LogoutAPIView(APIView):
                 token = RefreshToken(refresh_token)
                 token.blacklist()
 
-            response = Response({
-                'status': 'success',
-                'message': 'Logout successful'
-            }, status=status.HTTP_200_OK)
+            response = APIResponse.success(message="Logout successful")
 
             response.delete_cookie(settings.SIMPLE_JWT.get('AUTH_COOKIE'))
             response.delete_cookie(settings.SIMPLE_JWT.get('AUTH_COOKIE_REFRESH'))
@@ -126,24 +112,20 @@ class LogoutAPIView(APIView):
             return response
 
         except Exception as e:
-            return Response({
-                'status': 'error',
-                'message': 'Logout failed',
-                'error': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return APIResponse.error(
+                errors=str(e),
+                message="Logout failed"
+            )
 
 
 class TokenRefreshView(APIView):
-    permission_classes = []
+    permission_classes = [AllowAny]
 
     def post(self, request):
         refresh_token = request.COOKIES.get(settings.SIMPLE_JWT.get('AUTH_COOKIE_REFRESH'))
 
         if not refresh_token:
-            return Response({
-                'status': 'error',
-                'message': 'Refresh token not found'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return APIResponse.error(message="Refresh token not found")
 
         try:
             refresh = RefreshToken(refresh_token)
@@ -152,25 +134,20 @@ class TokenRefreshView(APIView):
             if settings.SIMPLE_JWT.get('ROTATE_REFRESH_TOKENS', False):
                 refresh_token = str(refresh)
 
-            response = Response({
-                'status': 'success',
-                'message': 'Token refreshed successfully'
-            })
+            response = APIResponse.success(message="Token refreshed successfully")
 
-            response = set_jwt_cookies(
+            return set_jwt_cookies(
                 response,
                 access_token,
                 refresh_token if settings.SIMPLE_JWT.get('ROTATE_REFRESH_TOKENS', False) else None
             )
 
-            return response
-
         except Exception as e:
-            return Response({
-                'status': 'error',
-                'message': 'Token refresh failed',
-                'error': str(e)
-            }, status=status.HTTP_401_UNAUTHORIZED)
+            return APIResponse.error(
+                errors=str(e),
+                message="Token refresh failed",
+                code=status.HTTP_401_UNAUTHORIZED
+            )
 
 
 class UserProfileAPIView(APIView):
@@ -180,23 +157,18 @@ class UserProfileAPIView(APIView):
         request.user.reset_daily_quota()
 
         serializer = UserProfileSerializer(request.user)
-        return Response({
-            'status': 'success',
-            'data': serializer.data
-        })
+        return APIResponse.success(data=serializer.data)
 
     def patch(self, request):
         serializer = UserProfileSerializer(request.user, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            return Response({
-                'status': 'success',
-                'message': 'Profile updated successfully',
-                'data': serializer.data
-            })
+            return APIResponse.success(
+                data=serializer.data,
+                message="Profile updated successfully"
+            )
 
-        return Response({
-            'status': 'error',
-            'message': 'Validation error',
-            'errors': serializer.errors
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return APIResponse.error(
+            errors=serializer.errors,
+            message="Validation error"
+        )
