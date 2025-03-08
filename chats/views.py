@@ -1,16 +1,19 @@
 import asyncio
 import json
+import time
+from datetime import timedelta
 
 from asgiref.sync import sync_to_async
 from django.http import StreamingHttpResponse, JsonResponse
 from django.views import View
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
-from rest_framework.permissions import AllowAny
+from django.core.cache import cache
+from django.utils import timezone
+from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 
 from .models import Chat, Message, MessageType
 from .services import AIService
-from .throttling import AnonymousUserRateThrottle, AuthenticatedUserRateThrottle
 
 get_chat = sync_to_async(Chat.objects.get)
 create_chat = sync_to_async(Chat.objects.create)
@@ -19,14 +22,27 @@ can_send_message = sync_to_async(lambda user: user.can_send_message())
 increment_message_count = sync_to_async(lambda user: user.increment_message_count())
 
 
+# Define throttling classes
+class AnonymousUserRateThrottle(AnonRateThrottle):
+    """Rate throttle for anonymous users"""
+    rate = '5/day'
+
+
+class AuthenticatedUserRateThrottle(UserRateThrottle):
+    """Rate throttle for authenticated users"""
+    # This throttle is not actually used for limiting
+    # since we use the custom user model's can_send_message method
+    rate = '30/day'
+
+
 def generate_title_from_message(message):
     clean_message = ' '.join(message.split())
     return clean_message[:20] + '...' if len(clean_message) > 20 else clean_message
 
 
 class ChatBaseView(View):
-    permission_classes = [AllowAny]
-    throttle_classes = [AnonymousUserRateThrottle, AuthenticatedUserRateThrottle]
+    anonymous_throttle = AnonymousUserRateThrottle()
+    authenticated_throttle = AuthenticatedUserRateThrottle()
 
     async def parse_request_data(self, request):
         """Parse and validate request data."""
@@ -52,40 +68,117 @@ class ChatBaseView(View):
             # Safely check authentication status in a sync context
             is_authenticated = await sync_to_async(lambda u: getattr(u, 'is_authenticated', False))(request.user)
             if is_authenticated:
-                user = request.user
+                return request.user, None
 
-        # Session ID for anonymous users
-        session_id = None
-        if not user:
-            if hasattr(request, 'session') and request.session:
-                if not request.session.session_key:
-                    await sync_to_async(request.session.save)()
-                session_id = request.session.session_key
-            if not session_id:
-                session_id = request.META.get('REMOTE_ADDR', 'unknown')
+        # For anonymous users
+        device_id = request.COOKIES.get('device_id')
 
-        return user, session_id
+        if not device_id and hasattr(request, 'session') and request.session:
+            if not request.session.session_key:
+                await sync_to_async(request.session.save)()
+            device_id = f"session_{request.session.session_key}"
+
+        # If device ID is not found in cookies or session, try to get it from headers
+        if not device_id:
+            browser_fingerprint = request.headers.get('X-Browser-Fingerprint')
+            if browser_fingerprint:
+                device_id = f"fp_{browser_fingerprint}"
+
+        # Finally, if device ID is not found in cookies, session, or headers, generate it from IP and user agent
+        if not device_id:
+            ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown'))
+            # Only use the first two parts of the IP address
+            ip_parts = ip.split('.')
+            partial_ip = '.'.join(ip_parts[:2]) if len(ip_parts) >= 2 else ip
+
+            user_agent = request.META.get('HTTP_USER_AGENT', '')
+
+            import hashlib
+            # Create a hash from the partial IP and user agent
+            device_id = f"ip_{hashlib.md5((partial_ip + user_agent).encode()).hexdigest()[:12]}"
+
+        return None, device_id
+
+    async def check_throttle(self, request):
+        """Check if the request should be throttled."""
+        # Get user or session
+        user, device_id = await self.get_user_or_session(request)
+
+        # Adapt request for DRF throttling
+        request._throttle_user = user
+
+        if user:
+            # For authenticated users, use the model's can_send_message
+            can_proceed = await can_send_message(user)
+            if not can_proceed:
+                return False, JsonResponse({"error": "Message limit reached. Please upgrade your plan."}, status=429)
+        else:
+            # For anonymous users, implement manual throttling since DRF throttling
+            # might not work well in Django views
+            cache_key = f"throttle_{device_id}"
+            now = timezone.now()
+
+            # Check if this key exists in cache
+            hit_count = cache.get(cache_key, None)
+
+            if hit_count is None:
+                # First request from this device
+                cache.set(cache_key, 1, 86400)  # 24 hours (day)
+                allow = True
+                wait_time = None
+            elif hit_count >= 5:  # 5/day limit
+                # Rate limit exceeded
+                allow = False
+                # Calculate time until reset (end of the day)
+                tomorrow = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+                wait_time = int((tomorrow - now).total_seconds())
+            else:
+                # Increment the counter
+                cache.set(cache_key, hit_count + 1, None)  # Keep the existing expiry
+                allow = True
+                wait_time = None
+
+            if not allow:
+                response = JsonResponse({"error": "Rate limit exceeded. Try again later."}, status=429)
+                if wait_time:
+                    response['Retry-After'] = wait_time
+                return False, response
+
+        return True, None
 
 
 @method_decorator(csrf_exempt, name='dispatch')
 class ChatCreateView(ChatBaseView):
     async def post(self, request):
         try:
+            # Check throttling
+            allow, error_response = await self.check_throttle(request)
+            if not allow:
+                return error_response
+
             # Parse request data
             message_content, error_response = await self.parse_request_data(request)
             if error_response:
                 return error_response
 
             # Get user or session
-            user, session_id = await self.get_user_or_session(request)
+            user, device_id = await self.get_user_or_session(request)
 
             # Create a new chat with title from message
             title = generate_title_from_message(message_content)
-            chat = await create_chat(user=user, title=title) if user else await create_chat(session_id=session_id,
+            chat = await create_chat(user=user, title=title) if user else await create_chat(session_id=device_id,
                                                                                             title=title)
 
-            # Return the chat ID
-            return JsonResponse({"chat_id": str(chat.id)})
+            # Return the chat ID and set device_id cookie if needed
+            response = JsonResponse({"chat_id": str(chat.id)})
+
+            # Set device_id cookie for future identification if it was generated in this request
+            if not request.COOKIES.get('device_id') and not user:
+                # Set cookie to expire in 1 year
+                max_age = 365 * 24 * 60 * 60  # 1 year in seconds
+                response.set_cookie('device_id', device_id, max_age=max_age, httponly=True, samesite='Lax')
+
+            return response
 
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
@@ -95,26 +188,25 @@ class ChatCreateView(ChatBaseView):
 class ChatMessageView(ChatBaseView):
     async def post(self, request, chat_id):
         try:
+            # Check throttling
+            allow, error_response = await self.check_throttle(request)
+            if not allow:
+                return error_response
+
             # Parse request data
             message_content, error_response = await self.parse_request_data(request)
             if error_response:
                 return error_response
 
             # Get user or session
-            user, session_id = await self.get_user_or_session(request)
-
-            # Check message limit for authenticated users
-            if user and not await can_send_message(user):
-                return JsonResponse({"error": "Message limit reached. Please upgrade your plan."}, status=429)
+            user, device_id = await self.get_user_or_session(request)
 
             # Get chat
             try:
                 chat = await get_chat(id=chat_id, user=user) if user else await get_chat(id=chat_id,
-                                                                                         session_id=session_id)
+                                                                                         session_id=device_id)
             except Chat.DoesNotExist:
                 return JsonResponse({"error": "Chat not found or you don't have permission to access it"}, status=404)
-
-            # No need to update title as it's already set during chat creation
 
             # Save user question
             await create_message(chat=chat, content=message_content, message_type=MessageType.USER)
@@ -126,7 +218,7 @@ class ChatMessageView(ChatBaseView):
             ai_service = AIService()
 
             async def stream_generator():
-                full_response = ""  # Move to the beginning of the function as an accumulator
+                full_response = ""  # Accumulator for the full response
                 try:
                     async for chunk in ai_service.process_query_stream(message_content):
                         # Process based on the actual output format of your AI service
@@ -147,7 +239,15 @@ class ChatMessageView(ChatBaseView):
                     # Save error message
                     await create_message(chat=chat, content=error_msg, message_type=MessageType.ASSISTANT)
 
-            return StreamingHttpResponse(stream_generator(), content_type="text/plain")
+            response = StreamingHttpResponse(stream_generator(), content_type="text/plain")
+
+            # Set device_id cookie for future identification if it was generated in this request
+            if not request.COOKIES.get('device_id') and not user:
+                # Set cookie to expire in 1 year
+                max_age = 365 * 24 * 60 * 60  # 1 year in seconds
+                response.set_cookie('device_id', device_id, max_age=max_age, httponly=True, samesite='Lax')
+
+            return response
 
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
