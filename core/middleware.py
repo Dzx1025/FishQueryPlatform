@@ -54,6 +54,13 @@ class JWTCookieMiddleware(MiddlewareMixin):
         self.get_response = get_response
         super().__init__(get_response)
 
+    def __call__(self, request):
+        # If the request is for the admin site, skip this middleware
+        if request.path.startswith("/admin/"):
+            return self.get_response(request)
+
+        return self.get_response(request)
+
     def process_request(self, request):
         """
         Process the request before it reaches the view
