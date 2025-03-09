@@ -62,7 +62,6 @@ class ChatBaseView(View):
     async def get_user_or_session(self, request):
         """Get authenticated user or session ID."""
         # User authentication - wrapped in sync_to_async to avoid async context errors
-        user = None
 
         if hasattr(request, 'user') and request.user is not None:
             # Safely check authentication status in a sync context
