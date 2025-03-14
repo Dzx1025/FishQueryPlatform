@@ -1,4 +1,3 @@
-import base64
 import json
 import os
 import time
@@ -8,6 +7,7 @@ import requests
 from loguru import logger
 from qdrant_client import QdrantClient
 from sentence_transformers import CrossEncoder
+from openai import AsyncOpenAI, OpenAI
 
 
 class AIService:
@@ -39,7 +39,7 @@ class AIService:
 
         # OpenAI configuration
         self.openai_api_key = os.environ.get("OPENAI_API_KEY")
-        self.openai_api_url = "https://api.openai.com/v1/chat/completions"
+        self.openai_api_url = "https://api.openai.com/v1/"
         self.openai_model = os.environ.get("OPENAI_MODEL")
 
         # Validate required configuration
@@ -248,29 +248,26 @@ class AIService:
         messages.append({"role": "user", "content": query})
 
         try:
-            # Call OpenAI API
-            response = requests.post(
-                self.openai_api_url,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self.openai_api_key}"
-                },
-                json={
-                    "model": self.openai_model,
-                    "messages": messages,
-                    "temperature": 0.1,  # Lower temperature for more focused output
-                    "max_tokens": 200
-                }
+            # Initialize the OpenAI client
+            client = OpenAI(
+                api_key=self.openai_api_key,
+                base_url=self.openai_api_url if hasattr(self, 'openai_api_url') and self.openai_api_url else None
             )
 
-            response_data = response.json()
+            # Call OpenAI API using the official client
+            response = client.chat.completions.create(
+                model=self.openai_model,
+                messages=messages,
+                temperature=0.1,  # Lower temperature for more focused output
+                max_tokens=200
+            )
 
-            if "choices" in response_data and len(response_data["choices"]) > 0:
-                contextualized_query = response_data["choices"][0]["message"]["content"].strip()
+            if response.choices and len(response.choices) > 0:
+                contextualized_query = response.choices[0].message.content.strip()
                 logger.info(f"Contextualized query: {contextualized_query}")
                 return contextualized_query
             else:
-                logger.warning(f"Failed to contextualize query: {response_data}")
+                logger.warning("Empty response received when contextualizing query")
                 return query
         except Exception as e:
             logger.error(f"Error contextualizing query: {e}")
@@ -290,7 +287,7 @@ class AIService:
             chat_history: List[Dict] = None
     ) -> AsyncGenerator[str, None]:
         """
-        Generate a streaming response using OpenAI API.
+        Generate a streaming response using OpenAI's official client library.
 
         Args:
             query: User query
@@ -311,7 +308,7 @@ class AIService:
 
         # Create QA system prompt
         qa_system_prompt = (
-                "You are given a user question, and please write clean, concise and accurate answer to the question. "
+                "You are an expert in Australian recreational fishing regulations, particularly those published by the Department of Primary Industries and Regional Development, Government of Western Australia. "
                 "You will be given a set of related contexts to the question, which are numbered sequentially starting from 1. "
                 "Each context has an implicit reference number based on its position in the array (first context is 1, second is 2, etc.). "
                 "Please use these contexts and cite them using the format [citation:x] at the end of each sentence where applicable. "
@@ -353,67 +350,38 @@ class AIService:
                 "context": serializable_context
             })
 
-            # Convert to base64
-            base64_context = base64.b64encode(escaped_context.encode()).decode()
-
             # Define separator
             separator = "__LLM_RESPONSE__"
 
             # Yield context info
-            yield f'0:"{base64_context}{separator}"\n'
+            yield f'0:"{escaped_context}{separator}"\n'
 
-            # Set up streaming request to OpenAI
-            response = requests.post(
-                self.openai_api_url,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self.openai_api_key}"
-                },
-                json={
-                    "model": self.openai_model,
-                    "messages": messages,
-                    "temperature": 0.1,
-                    "max_tokens": 1024,
-                    "stream": True
-                },
-                stream=True
+            # Initialize the OpenAI client
+            client = AsyncOpenAI(
+                api_key=self.openai_api_key,
+                base_url=self.openai_api_url if hasattr(self, 'openai_api_url') and self.openai_api_url else None
+            )
+
+            # Set up streaming request to OpenAI using the official client
+            stream = await client.chat.completions.create(
+                model=self.openai_model,
+                messages=messages,
+                temperature=0.1,
+                max_tokens=1024,
+                stream=True,
             )
 
             # Process streaming response
-            for line in response.iter_lines():
-                if line:
-                    # Skip the "data: " prefix
-                    if line.startswith(b"data: "):
-                        line = line[6:]
-
-                    # Skip the "[DONE]" message
-                    if line.strip() == b"[DONE]":
-                        continue
-
-                    try:
-                        # Parse the JSON chunk
-                        chunk = json.loads(line)
-
-                        # Extract the content delta if present
-                        if "choices" in chunk and len(chunk["choices"]) > 0:
-                            delta = chunk["choices"][0].get("delta", {})
-                            if "content" in delta and delta["content"]:
-                                content = delta["content"]
-
-                                # Escape quotes and newlines for JSON serialization
-                                escaped_chunk = content.replace('"', '\\"').replace('\n', '\\n')
-                                yield f'0:"{escaped_chunk}"\n'
-                    except json.JSONDecodeError:
-                        continue
-                    except Exception as e:
-                        logger.error(f"Error processing chunk: {e}")
-                        continue
+            async for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    yield f'0:"{content}"\n'
 
             # Return completion info
             yield 'd:{"finishReason":"stop"}\n'
 
         except Exception as e:
-            error_message = f"Error generating response: {str(e)}"
+            error_message = f"Error generating LLM question: {str(e)}"
             logger.error(error_message)
             yield '3:{text}\n'.format(text=error_message)
 
@@ -487,7 +455,7 @@ class AIService:
                 content = chunk[3:-2]  # Remove the '0:"' prefix and '"\n' suffix
                 content = content.replace('\\n', '\n').replace('\\"', '"')
 
-                # If this is the first chunk and contains the base64 context + separator
+                # If this is the first chunk + separator
                 if not response_started and "__LLM_RESPONSE__" in content:
                     # Only keep the part after the separator
                     parts = content.split("__LLM_RESPONSE__")
