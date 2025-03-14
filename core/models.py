@@ -1,3 +1,4 @@
+from asgiref.sync import sync_to_async
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
 from django.utils import timezone
@@ -123,24 +124,24 @@ class CustomUser(AbstractUser):
     def __str__(self):
         return self.email
 
-    def reset_daily_quota(self):
+    async def reset_daily_quota(self):
         """Reset the daily chat counter if it's a new day"""
         today = timezone.now().date()
         if self.last_message_reset != today:
             self.messages_used_today = 0
             self.last_message_reset = today
-            self.save(update_fields=['messages_used_today', 'last_message_reset'])
+            await sync_to_async(self.save)(update_fields=['messages_used_today', 'last_message_reset'])
 
-    def can_send_message(self):
+    async def can_send_message(self):
         """Check if the user can chat based on their quota"""
-        self.reset_daily_quota()
+        await self.reset_daily_quota()
         return self.messages_used_today < self.daily_message_quota
 
-    def increment_message_count(self):
+    async def increment_message_count(self):
         """Use one chat from the quota if available"""
-        if self.can_send_message():
+        if await self.can_send_message():
             self.messages_used_today += 1
-            self.save(update_fields=['messages_used_today'])
+            await sync_to_async(self.save)(update_fields=['messages_used_today'])
             return True
         return False
 
