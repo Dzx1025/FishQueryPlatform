@@ -3,6 +3,14 @@ from rest_framework import status
 from core.responses import APIResponse
 
 
+def ratelimited_error(request, exception):
+    """Custom response for rate-limited requests"""
+    return APIResponse.error(
+        message='Rate limit exceeded. Please try again later.',
+        code=status.HTTP_429_TOO_MANY_REQUESTS
+    )
+
+
 def custom_exception_handler(exc, context):
     """Custom exception handler that formats all errors using APIResponse"""
     # Call REST framework's default exception handler first
