@@ -117,6 +117,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = (
+            'id',
             'email',
             'username',
             'subscription_type',
@@ -126,6 +127,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'subscription_expiry'
         )
         read_only_fields = (
+            'id',
             'email',
             'subscription_type',
             'is_subscription_active',
