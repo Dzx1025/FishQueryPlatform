@@ -1,38 +1,19 @@
 import asyncio
 import json
-import time
 from datetime import timedelta
 
 from asgiref.sync import sync_to_async
-from django.http import StreamingHttpResponse, JsonResponse
-from django.views import View
-from django.utils.decorators import method_decorator
-from django.views.decorators.csrf import csrf_exempt
 from django.core.cache import cache
+from django.http import StreamingHttpResponse, JsonResponse
 from django.utils import timezone
-from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
+from django.utils.decorators import method_decorator
+from django.views import View
+from django.views.decorators.csrf import csrf_exempt
 
 from .models import Chat, Message, MessageType
 from .services import AIService
 
-get_chat = sync_to_async(Chat.objects.get)
-create_chat = sync_to_async(Chat.objects.create)
-create_message = sync_to_async(Message.objects.create)
-can_send_message = sync_to_async(lambda user: user.can_send_message())
-increment_message_count = sync_to_async(lambda user: user.increment_message_count())
-
-
-# Define throttling classes
-class AnonymousUserRateThrottle(AnonRateThrottle):
-    """Rate throttle for anonymous users"""
-    rate = '5/day'
-
-
-class AuthenticatedUserRateThrottle(UserRateThrottle):
-    """Rate throttle for authenticated users"""
-    # This throttle is not actually used for limiting
-    # since we use the custom user model's can_send_message method
-    rate = '30/day'
+DailyMessageLimit = 30
 
 
 def generate_title_from_message(message):
@@ -41,9 +22,6 @@ def generate_title_from_message(message):
 
 
 class ChatBaseView(View):
-    anonymous_throttle = AnonymousUserRateThrottle()
-    authenticated_throttle = AuthenticatedUserRateThrottle()
-
     async def parse_request_data(self, request):
         """Parse and validate request data."""
         try:
@@ -59,12 +37,11 @@ class ChatBaseView(View):
         except json.JSONDecodeError:
             return None, JsonResponse({"error": "Invalid JSON"}, status=400)
 
-    async def get_user_or_session(self, request):
+    async def get_user_or_identity(self, request):
         """Get authenticated user or session ID."""
-        # User authentication - wrapped in sync_to_async to avoid async context errors
 
         if hasattr(request, 'user') and request.user is not None:
-            # Safely check authentication status in a sync context
+            # wrapped in sync_to_async to avoid async context errors
             is_authenticated = await sync_to_async(lambda u: getattr(u, 'is_authenticated', False))(request.user)
             if is_authenticated:
                 return request.user, None
@@ -72,12 +49,7 @@ class ChatBaseView(View):
         # For anonymous users
         device_id = request.COOKIES.get('device_id')
 
-        if not device_id and hasattr(request, 'session') and request.session:
-            if not request.session.session_key:
-                await sync_to_async(request.session.save)()
-            device_id = f"session_{request.session.session_key}"
-
-        # If device ID is not found in cookies or session, try to get it from headers
+        # If device ID is not found in cookies, try to get it from headers
         if not device_id:
             browser_fingerprint = request.headers.get('X-Browser-Fingerprint')
             if browser_fingerprint:
@@ -101,20 +73,16 @@ class ChatBaseView(View):
     async def check_throttle(self, request):
         """Check if the request should be throttled."""
         # Get user or session
-        user, device_id = await self.get_user_or_session(request)
-
-        # Adapt request for DRF throttling
-        request._throttle_user = user
+        user, session_id = await self.get_user_or_identity(request)
 
         if user:
             # For authenticated users, use the model's can_send_message
-            can_proceed = await can_send_message(user)
+            can_proceed = await user.can_send_message()
             if not can_proceed:
                 return False, JsonResponse({"error": "Message limit reached. Please upgrade your plan."}, status=429)
         else:
-            # For anonymous users, implement manual throttling since DRF throttling
-            # might not work well in Django views
-            cache_key = f"throttle_{device_id}"
+            # For anonymous users, implement manual throttling since DRF throttling might not work well in Django views
+            cache_key = f"throttle_{session_id}"
             now = timezone.now()
 
             # Check if this key exists in cache
@@ -125,7 +93,7 @@ class ChatBaseView(View):
                 cache.set(cache_key, 1, 86400)  # 24 hours (day)
                 allow = True
                 wait_time = None
-            elif hit_count >= 5:  # 5/day limit
+            elif hit_count >= DailyMessageLimit:  # Exceeded the limit
                 # Rate limit exceeded
                 allow = False
                 # Calculate time until reset (end of the day)
@@ -161,12 +129,12 @@ class ChatCreateView(ChatBaseView):
                 return error_response
 
             # Get user or session
-            user, device_id = await self.get_user_or_session(request)
+            user, device_id = await self.get_user_or_identity(request)
 
             # Create a new chat with title from message
             title = generate_title_from_message(message_content)
-            chat = await create_chat(user=user, title=title) if user else await create_chat(session_id=device_id,
-                                                                                            title=title)
+            chat = await Chat.objects.acreate(user=user, title=title) if user else await Chat.objects.acreate(
+                session_id=device_id, title=title)
 
             # Return the chat ID and set device_id cookie if needed
             response = JsonResponse({"chat_id": str(chat.id)})
@@ -198,48 +166,75 @@ class ChatMessageView(ChatBaseView):
                 return error_response
 
             # Get user or session
-            user, device_id = await self.get_user_or_session(request)
+            user, device_id = await self.get_user_or_identity(request)
 
             # Get chat
             try:
-                chat = await get_chat(id=chat_id, user=user) if user else await get_chat(id=chat_id,
-                                                                                         session_id=device_id)
+                chat = await Chat.objects.aget(id=chat_id, user=user) if user else await Chat.objects.aget(id=chat_id,
+                                                                                                           session_id=device_id)
+
             except Chat.DoesNotExist:
                 return JsonResponse({"error": "Chat not found or you don't have permission to access it"}, status=404)
 
             # Save user question
-            await create_message(chat=chat, content=message_content, message_type=MessageType.USER)
+            await Message.objects.acreate(chat=chat, content=message_content, message_type=MessageType.USER)
 
             if user:
-                await increment_message_count(user)
+                await user.increment_message_count()
 
-            # Stream response from AI service
+            # Stream response from AI service using SSE format
             ai_service = AIService()
 
-            async def stream_generator():
+            async def sse_generator():
                 full_response = ""  # Accumulator for the full response
+                event_id = 1  # Start with event ID 1
+
+                # Send a start event
+                yield f"id: {event_id}\n"
+                yield f"event: start\n"
+                yield f"data: {{}}\n\n"
+                event_id += 1
+
                 try:
                     async for chunk in ai_service.process_query_stream(message_content):
-                        # Process based on the actual output format of your AI service
-                        if chunk.startswith('0:"'):
-                            # Extract content between quotes and handle escaping
-                            content = chunk[3:-2]  # Remove the '0:"' prefix and '"\n' suffix
-                            content = content.replace('\\n', '\n').replace('\\"', '"')
-                            full_response += content  # Accumulate the response
-                            yield content
+                        full_response += chunk  # Accumulate the response
+
+                        yield f"id: {event_id}\n"
+                        yield f"event: message\n"
+                        yield f"data: {json.dumps({'content': chunk})}\n\n"
+                        event_id += 1
 
                         await asyncio.sleep(0)
 
-                    # Save assistant response
-                    await create_message(chat=chat, content=full_response, message_type=MessageType.ASSISTANT)
+                    # Save assistant response after streaming is complete
+                    await Message.objects.acreate(chat=chat, content=full_response, message_type=MessageType.ASSISTANT)
+
+                    # Send a done event
+                    yield f"id: {event_id}\n"
+                    yield f"event: done\n"
+                    yield f"data: {{}}\n\n"
+
                 except Exception as ex:
                     error_msg = f"Error: {str(ex)}"
-                    yield error_msg
+
+                    # Send error as an SSE event
+                    yield f"id: {event_id}\n"
+                    yield f"event: error\n"
+                    yield f"data: {json.dumps({'error': error_msg})}\n\n"
+
                     # Save error message
-                    await create_message(chat=chat, content=error_msg, message_type=MessageType.ASSISTANT)
+                    await Message.objects.acreate(chat=chat, content=error_msg, message_type=MessageType.ASSISTANT)
 
-            response = StreamingHttpResponse(stream_generator(), content_type="text/plain")
+            # Create response with correct content type for SSE
+            response = StreamingHttpResponse(
+                sse_generator(),
+                content_type="text/event-stream"
+            )
 
+            # Important headers for SSE
+            response['Cache-Control'] = 'no-cache'
+            response['X-Accel-Buffering'] = 'no'  # For Nginx
+            # response['Connection'] = 'keep-alive'
             # Set device_id cookie for future identification if it was generated in this request
             if not request.COOKIES.get('device_id') and not user:
                 # Set cookie to expire in 1 year
