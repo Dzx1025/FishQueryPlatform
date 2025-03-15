@@ -16,22 +16,16 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path, include, re_path
-from rest_framework_simplejwt.views import (
-    TokenRefreshView,
-)
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
-from core.views import HasuraTokenObtainPairView
 
 schema_view = get_schema_view(
     openapi.Info(
-        title="Your API",
+        title="Fish Query Platform API",
         default_version="v1",
-        description="Your API description",
-        terms_of_service="https://www.yourapp.com/terms/",
-        contact=openapi.Contact(email="contact@yourapp.com"),
-        license=openapi.License(name="Your License"),
+        description="This is the API for the Fish Query Platform",
+        contact=openapi.Contact(email="zexuding@outlook.com"),
     ),
     public=True,
     permission_classes=(
@@ -43,9 +37,13 @@ schema_view = get_schema_view(
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("api/token/", HasuraTokenObtainPairView.as_view(), name="token_obtain_pair"),
-    path("api/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
-    path("chat/", include("chat.urls")),
+
+    # Core app URLs
+    path("api/auth/", include("core.urls")),
+
+    # Chat app URLs
+    path("api/chat/", include("chats.urls")),
+
     # Swagger URLs
     re_path(
         r"^swagger(?P<format>\.json|\.yaml)$",
@@ -57,5 +55,7 @@ urlpatterns = [
         schema_view.with_ui("swagger", cache_timeout=0),
         name="schema-swagger-ui",
     ),
+
+    # Redoc URLs
     path("redoc/", schema_view.with_ui("redoc", cache_timeout=0), name="schema-redoc"),
 ]

@@ -1,0 +1,11 @@
+table:
+  name: core_customuser
+  schema: public
+array_relationships:
+  - name: chats_chats
+    using:
+      foreign_key_constraint_on:
+        column: user_id
+        table:
+          name: chats_chat
+          schema: public

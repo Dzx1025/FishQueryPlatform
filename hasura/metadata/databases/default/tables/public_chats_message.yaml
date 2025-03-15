@@ -1,0 +1,17 @@
+table:
+  name: chats_message
+  schema: public
+object_relationships:
+  - name: chats_chat
+    using:
+      foreign_key_constraint_on: chat_id
+select_permissions:
+  - role: user
+    permission:
+      columns:
+        - chat_id
+        - content
+        - created_at
+        - message_type
+      filter: {}
+    comment: ""
