@@ -68,7 +68,6 @@ SIMPLE_JWT = {
     'AUTH_COOKIE_HTTP_ONLY': True,  # JS cannot access cookies
     'AUTH_COOKIE_PATH': '/',  # Cookie path
     'AUTH_COOKIE_SAMESITE': 'Lax',  # CSRF protection
-
 }
 
 # Logging
