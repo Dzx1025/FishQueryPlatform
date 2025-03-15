@@ -17,6 +17,7 @@ CSRF_TRUSTED_ORIGINS = [
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 # REST Framework settings for development
+
 REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] = [
     "rest_framework.renderers.JSONRenderer",
     "rest_framework.renderers.BrowsableAPIRenderer",
