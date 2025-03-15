@@ -80,6 +80,8 @@ services:
           - gql.local
 
   django:
+    env_file:
+      - .env
     build:
       context: .
       dockerfile: Dockerfile
