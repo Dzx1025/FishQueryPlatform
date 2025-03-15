@@ -55,10 +55,11 @@ class LoginAPIView(TokenObtainPairView):
             if response.status_code == status.HTTP_200_OK:
                 access_token = response.data.get('access')
                 refresh_token = response.data.get('refresh')
+                userid = response.data.get('user_id')
                 email = response.data.get('email')
 
                 response = APIResponse.success(
-                    data={'email': email},
+                    data={'userid': userid, 'email': email},
                     message="Login successful"
                 )
                 return set_jwt_cookies(response, access_token, refresh_token)
