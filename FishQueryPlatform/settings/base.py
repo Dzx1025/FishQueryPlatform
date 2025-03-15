@@ -3,7 +3,7 @@ from pathlib import Path
 from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / "subdir".
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
@@ -120,7 +120,7 @@ USE_L10N = True
 USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
-STATIC_URL = "/static/"
+STATIC_URL = os.path.join(BASE_DIR, "/staticfiles/")
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
