@@ -107,8 +107,16 @@ class LogoutAPIView(APIView):
 
             response = APIResponse.success(message="Logout successful")
 
-            response.delete_cookie(settings.SIMPLE_JWT.get('AUTH_COOKIE'))
-            response.delete_cookie(settings.SIMPLE_JWT.get('AUTH_COOKIE_REFRESH'))
+            response.delete_cookie(
+                settings.SIMPLE_JWT.get('AUTH_COOKIE'),
+                domain=settings.SIMPLE_JWT.get('AUTH_COOKIE_DOMAIN'),
+                path=settings.SIMPLE_JWT.get('AUTH_COOKIE_PATH', '/'),
+            )
+            response.delete_cookie(
+                settings.SIMPLE_JWT.get('AUTH_COOKIE_REFRESH'),
+                domain=settings.SIMPLE_JWT.get('AUTH_COOKIE_DOMAIN'),
+                path=settings.SIMPLE_JWT.get('AUTH_COOKIE_PATH', '/'),
+            )
 
             return response
 
