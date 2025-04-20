@@ -13,9 +13,6 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
-# Static files
-STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
-
 # REST Framework settings for development
 REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] = [
     "rest_framework.renderers.JSONRenderer",
