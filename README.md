@@ -132,7 +132,7 @@ server {
 }
 ```
 
-gql.conf：
+gql.conf:
 
 ```nginx
 server {
