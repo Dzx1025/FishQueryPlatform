@@ -61,6 +61,20 @@ Then `python manage.py migrate` to apply migrations.
 If you want to use the admin interface, you need to create a superuser.
 
 Run `python manage.py createsuperuser` to create a superuser.
+`python manage.py collectstatic --noinput` to collect static files.
+
+Then `exit` to leave the container. In your host machine, copy the static files to the host machine by running:
+`docker cp ai_platform-django-1:/app/staticfiles/ /staticfiles/`.
+
+## 4. Hasura setup
+
+Go inside the Django container:
+
+```bash
+docker compose exec ai_platform-hasura-1 bash
+```
+
+Run `hasura-cli metadata apply`.
 
 And `python manage.py collectstatic` to collect static files.
 
@@ -86,6 +100,8 @@ docker compose exec ai_platform-hasura-1 bash
 Run `hasura-cli metadata apply`.
 
 ### Nginx configuration example
+
+django.conf:
 
 django.conf:
 
