@@ -23,7 +23,7 @@ def generate_title_from_message(message):
 
 class ChatBaseView(View):
     @staticmethod
-    async def parse_request_data(self, request):
+    async def parse_request_data(request):
         """Parse and validate request data."""
         try:
             data = json.loads(request.body)
@@ -39,7 +39,7 @@ class ChatBaseView(View):
             return None, JsonResponse({"error": "Invalid JSON"}, status=400)
 
     @staticmethod
-    async def get_user_or_identity(self, request):
+    async def get_user_or_identity(request):
         """Get authenticated user or session ID."""
 
         if hasattr(request, 'user') and request.user is not None:

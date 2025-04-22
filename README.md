@@ -170,7 +170,7 @@ server {
 }
 ```
 
-qdrant.conf：
+qdrant.conf:
 
 ```nginx
 server {
