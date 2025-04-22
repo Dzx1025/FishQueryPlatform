@@ -46,10 +46,6 @@ CSRF_TRUSTED_ORIGINS = [
     "https://fishquery.dzx1025.com",
 ]
 
-# Static files
-STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
-STATIC_URL = "/static/"
-
 # JWT settings
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
