@@ -124,24 +124,24 @@ class CustomUser(AbstractUser):
     def __str__(self):
         return self.email
 
-    async def reset_daily_quota(self):
+    def reset_daily_quota(self):
         """Reset the daily chat counter if it's a new day"""
         today = timezone.now().date()
         if self.last_message_reset != today:
             self.messages_used_today = 0
             self.last_message_reset = today
-            await sync_to_async(self.save)(update_fields=['messages_used_today', 'last_message_reset'])
+            self.save(update_fields=['messages_used_today', 'last_message_reset'])
 
-    async def can_send_message(self):
+    def can_send_message(self):
         """Check if the user can chat based on their quota"""
-        await self.reset_daily_quota()
+        self.reset_daily_quota()
         return self.messages_used_today < self.daily_message_quota
 
-    async def increment_message_count(self):
+    def increment_message_count(self):
         """Use one chat from the quota if available"""
-        if await self.can_send_message():
+        if self.can_send_message():
             self.messages_used_today += 1
-            await sync_to_async(self.save)(update_fields=['messages_used_today'])
+            self.save(update_fields=['messages_used_today'])
             return True
         return False
 

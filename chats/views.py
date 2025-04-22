@@ -22,6 +22,7 @@ def generate_title_from_message(message):
 
 
 class ChatBaseView(View):
+    @staticmethod
     async def parse_request_data(self, request):
         """Parse and validate request data."""
         try:
@@ -37,6 +38,7 @@ class ChatBaseView(View):
         except json.JSONDecodeError:
             return None, JsonResponse({"error": "Invalid JSON"}, status=400)
 
+    @staticmethod
     async def get_user_or_identity(self, request):
         """Get authenticated user or session ID."""
 
@@ -77,7 +79,7 @@ class ChatBaseView(View):
 
         if user:
             # For authenticated users, use the model's can_send_message
-            can_proceed = await user.can_send_message()
+            can_proceed = user.can_send_message()
             if not can_proceed:
                 return False, JsonResponse({"error": "Message limit reached. Please upgrade your plan."}, status=429)
         else:
@@ -180,7 +182,7 @@ class ChatMessageView(ChatBaseView):
             await Message.objects.acreate(chat=chat, content=message_content, message_type=MessageType.USER)
 
             if user:
-                await user.increment_message_count()
+                user.increment_message_count()
 
             # Stream response from AI service using SSE format
             ai_service = AIService()
