@@ -63,8 +63,19 @@ If you want to use the admin interface, you need to create a superuser.
 Run `python manage.py createsuperuser` to create a superuser.
 `python manage.py collectstatic --noinput` to collect static files.
 
-Then `exit` to leave the container. In your host machine, copy the static files to the host machine by running:
+Then `exit` to leave the container.
+
+##### Production Admin Page Setup
+
+In your host machine, copy the static files to the host machine by running:
 `docker cp ai_platform-django-1:/app/staticfiles/ /staticfiles/`.
+
+Also, you need to set the permissions for the static files directory:
+
+```bash
+sudo chmod 755 ${DEPLOY_PATH}
+sudo chmod -R 755 ${DEPLOY_PATH}/FishQueryPlatform/staticfiles
+```
 
 ## 4. Hasura setup
 
@@ -76,34 +87,11 @@ docker compose exec ai_platform-hasura-1 bash
 
 Run `hasura-cli metadata apply`.
 
-And `python manage.py collectstatic` to collect static files.
-
 Then `exit` to leave the container.
-
-In your host machine, copy the static files to the host machine by running:
-`docker cp fishqueryplatform-django-1:/app/staticfiles/ ./staticfiles/`.
-
-Also, you need to set the permissions for the static files directory:
-```bash
-sudo chmod 755 ${DEPLOY_PATH}
-sudo chmod -R 755 ${DEPLOY_PATH}/FishQueryPlatform/staticfiles
-```
-
-### 5. Hasura setup
-
-Go inside the Django container:
-
-```bash
-docker compose exec ai_platform-hasura-1 bash
-```
-
-Run `hasura-cli metadata apply`.
 
 ### Nginx configuration example
 
-django.conf:
-
-django.conf:
+**django.conf:**
 
 ```nginx
 server {
@@ -148,7 +136,7 @@ server {
 }
 ```
 
-gql.conf:
+**gql.conf:**
 
 ```nginx
 server {
@@ -170,7 +158,7 @@ server {
 }
 ```
 
-qdrant.conf:
+**qdrant.conf:**
 
 ```nginx
 server {
