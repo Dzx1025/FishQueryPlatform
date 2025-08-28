@@ -20,24 +20,6 @@ services:
         aliases:
           - db.local
 
-  #  neo4j:
-  #    image: neo4j:5.9.0
-  #    restart: unless-stopped
-  #    environment:
-  #      NEO4J_AUTH: ${NEO4J_USER}/${NEO4J_PASSWORD}
-  #      NEO4J_PLUGINS: '["apoc"]'
-  #    ports:
-  #      - "127.0.0.1:7474:7474"
-  #      - "127.0.0.1:7687:7687"
-  #    volumes:
-  #      - neo4j-data:/data
-  #      - neo4j-logs:/logs
-  #      - neo4j-plugins:/plugins
-  #    networks:
-  #      default:
-  #        aliases:
-  #          - neo4j.local
-
   qdrant:
     image: qdrant/qdrant:v1.12.5
     restart: unless-stopped
@@ -92,9 +74,6 @@ services:
       postgis:
         condition: service_healthy
     environment:
-      #      NEO4J_URL: bolt://neo4j:7687
-      #      NEO4J_USER: ${NEO4J_USER}
-      #      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
       QDRANT_URL: http://qdrant:6334
       DJANGO_SETTINGS_MODULE: FishQueryPlatform.settings.prod
     command: gunicorn FishQueryPlatform.wsgi:application --bind 0.0.0.0:8000
@@ -105,9 +84,6 @@ services:
 
 volumes:
   postgis-data:
-  #  neo4j-data:
-  #  neo4j-logs:
-  #  neo4j-plugins:
   qdrant-data:
 
 networks:
