@@ -68,12 +68,12 @@ Then `exit` to leave the container.
 ##### Production Admin Page Setup
 
 In your host machine, copy the static files to the host machine by running:
-`docker cp ai_platform-django-1:/app/staticfiles/ /staticfiles/`.
+`docker cp fishqueryplatform-django-1:/app/staticfiles/ .`
 
-Also, you need to set the permissions for the static files directory:
+Also, you need to set the permissions for the static files directory (if it's not working, you need to set permissions
+of its parent directory as well):
 
 ```bash
-sudo chmod 755 ${DEPLOY_PATH}
 sudo chmod -R 755 ${DEPLOY_PATH}/FishQueryPlatform/staticfiles
 ```
 
@@ -82,10 +82,15 @@ sudo chmod -R 755 ${DEPLOY_PATH}/FishQueryPlatform/staticfiles
 Go inside the Django container:
 
 ```bash
-docker compose exec ai_platform-hasura-1 bash
+sudo docker exec -it fishqueryplatform-hasura-1 bash
 ```
 
-Run `hasura-cli metadata apply`.
+Run:
+
+```bash
+cd hasura/
+hasura-cli metadata apply
+```
 
 Then `exit` to leave the container.
 
@@ -100,7 +105,7 @@ server {
 
     # Static files location for Django admin and other collected static files
     location /static/ {
-        alias /yourpath/staticfiles/;
+        alias /<project-path>/staticfiles/;
         types {
             text/css css;
             application/javascript js;
