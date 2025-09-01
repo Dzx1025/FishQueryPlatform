@@ -2,8 +2,6 @@ name: Deployment
 on:
   push:
     branches:
-      - prod
-      - develop
       - main
 
 jobs:
@@ -16,7 +14,7 @@ jobs:
 
       - name: Package codebase
         run: |
-          tar -cvf platform.tar .
+          tar czvf platform.tar.gz .
 
       - name: Install SSH key
         uses: shimataro/ssh-key-action@v2.7.0
@@ -32,7 +30,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
-          source: "platform.tar"
+          source: "platform.tar.gz"
           target: ${{ secrets.DEPLOY_PATH }}
 
       - name: Deploy and restart
@@ -45,7 +43,7 @@ jobs:
           script: |
             cd ${{ secrets.DEPLOY_PATH }}
             docker compose down
-            tar -xvf platform.tar
+            tar xzvf platform.tar
             rm platform.tar
             cp ../.env .
             docker compose up -d --build
