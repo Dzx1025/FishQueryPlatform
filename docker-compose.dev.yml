@@ -1,6 +1,6 @@
 services:
   postgis:
-    image: postgis/postgis:17-3.5
+    image: kartoza/postgis:17-3.5
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -15,27 +15,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      default:
-        aliases:
-          - db.local
-
-  qdrant:
-    image: qdrant/qdrant:v1.12.5
-    restart: unless-stopped
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - qdrant-data:/qdrant/storage
-    environment:
-      QDRANT__SERVICE__GRPC_PORT: 6333
-      QDRANT__SERVICE__HTTP_PORT: 6334
-      QDRANT__LOG_LEVEL: DEBUG  # Added debug logging
-    networks:
-      default:
-        aliases:
-          - qdrant.local
 
   hasura:
     image: hasura/graphql-engine:v2.43.0.cli-migrations-v3
@@ -56,10 +35,6 @@ services:
       HASURA_GRAPHQL_JWT_SECRET: ${HASURA_JWT_SECRET}
       HASURA_GRAPHQL_ENABLE_TELEMETRY: "false"
       HASURA_GRAPHQL_LOG_LEVEL: debug         # Changed to debug
-    networks:
-      default:
-        aliases:
-          - gql.local
 
   django:
     env_file:
@@ -74,19 +49,15 @@ services:
       postgis:
         condition: service_healthy
     environment:
-      QDRANT_URL: https://qdrant.fishquery.dzx1025.com:443
+      QDRANT_URL: https://qdrant.fishquery.dzx1025.com
       DJANGO_SETTINGS_MODULE: FishQueryPlatform.settings.dev
     volumes:
       - .:/app  # Added volume mount for hot reload
-    command: python manage.py runserver 0.0.0.0:8000
-    networks:
-      default:
-        aliases:
-          - api.local
+      - venv_data:/app/.venv  # Persist virtual environment
 
 volumes:
   postgis-data:
-  qdrant-data:
+  venv_data:
 
 networks:
   default:

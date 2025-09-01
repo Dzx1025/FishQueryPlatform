@@ -77,23 +77,6 @@ of its parent directory as well):
 sudo chmod -R 755 ${DEPLOY_PATH}/FishQueryPlatform/staticfiles
 ```
 
-## 4. Hasura setup
-
-Go inside the Django container:
-
-```bash
-sudo docker exec -it fishqueryplatform-hasura-1 bash
-```
-
-Run:
-
-```bash
-cd hasura/
-hasura-cli metadata apply
-```
-
-Then `exit` to leave the container.
-
 ### Nginx configuration example
 
 **django.conf:**

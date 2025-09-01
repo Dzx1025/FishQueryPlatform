@@ -1,45 +1,66 @@
-FROM python:3.11-slim
+# ---- STAGE 1: Builder ----
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    DEBIAN_FRONTEND=noninteractive \
-    GDAL_VERSION=3.6.2
+    DEBIAN_FRONTEND=noninteractive
 
-# Set work directory
-WORKDIR /app
+# Configure uv
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
 
-# Install build dependencies and cleanup in same layer
+# Disable Python downloads, because we want to use the system interpreter
+# across both images.
+ENV UV_PYTHON_DOWNLOADS=0
+
+# Install build-time system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    software-properties-common \
-    gnupg \
-    wget \
-    curl \
-    git \
-    pkg-config \
+    libpq-dev \
+    libgdal-dev \
     python3-dev \
-    postgresql-client \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --locked --no-dev
+
+COPY . .
+
+# ---- STAGE 2: Final Image ----
+# Use a final image without uv
+FROM python:3.13-slim-bookworm
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/app/.venv/bin:$PATH"
+
+# Install only run-time system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     libgdal-dev \
     gdal-bin \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Set GDAL environment variables
-ENV CPLUS_INCLUDE_PATH=/usr/include/gdal \
-    C_INCLUDE_PATH=/usr/include/gdal \
-    GDAL_CONFIG=/usr/bin/gdal-config
+# Create a non-root user for security
+RUN groupadd -r django-user && useradd -r -g django-user django-user
 
-# Verify GDAL installation and get version
-RUN gdal-config --version
+WORKDIR /app
 
-# Install Python dependencies
-COPY requirements.txt /app/
+# Copy the application from the builder
+COPY --from=builder --chown=django-user:django-user /app /app
 
-# Install GDAL and Python dependencies
-RUN pip install --no-cache-dir wheel setuptools \
-    && pip install --no-cache-dir GDAL==$(gdal-config --version) \
-    && pip install --no-cache-dir -r requirements.txt
+# Switch to the non-root user
+USER django-user
 
-# Copy project
-COPY . /app/
+# Expose the port the app runs on
+EXPOSE 8000
+
+CMD ["gunicorn", "FishQueryPlatform.asgi:application", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--workers", "4"]

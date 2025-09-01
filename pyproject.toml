@@ -1,0 +1,24 @@
+[project]
+name = "fishqueryplatform"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "asgiref>=3.9.1", # Django ASGI support
+    "django>=5.2.5",
+    "django-cors-headers>=4.7.0",
+    "django-environ>=0.12.0",
+    "djangorestframework>=3.16.1",
+    "djangorestframework-simplejwt>=5.5.1",
+    "drf-yasg>=1.21.10", # Swagger for DRF
+    "loguru>=0.7.3",
+    "openai>=1.102.0",
+    "psycopg2-binary>=2.9.10", # PostgreSQL adapter
+    "python-dotenv>=1.1.1",
+    "qdrant-client>=1.15.1",
+    "requests>=2.32.5",
+    "sentence-transformers>=5.1.0",
+    "uvicorn[standard]",
+    "gunicorn",
+]
