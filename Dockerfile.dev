@@ -1,50 +1,43 @@
-FROM python:3.11-slim
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 
-# Set environment variables
+# Set environment variables for Python and apt
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    DEBIAN_FRONTEND=noninteractive \
-    GDAL_VERSION=3.6.2
+    DEBIAN_FRONTEND=noninteractive
+
+# Configure uv
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_TOOL_BIN_DIR=/usr/local/bin
 
 # Set work directory
 WORKDIR /app
 
-# Install build dependencies and cleanup in same layer
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    software-properties-common \
-    gnupg \
-    wget \
-    curl \
-    git \
-    pkg-config \
-    python3-dev \
-    postgresql-client \
     libpq-dev \
     libgdal-dev \
     gdal-bin \
+    python3-dev \
+    postgresql-client \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Set GDAL environment variables
-ENV CPLUS_INCLUDE_PATH=/usr/include/gdal \
-    C_INCLUDE_PATH=/usr/include/gdal \
-    GDAL_CONFIG=/usr/bin/gdal-config
+# Install Python dependencies including development tools
+# This command will be run by docker-compose to leverage caching
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --locked --all-extras
 
-# Verify GDAL installation and get version
-RUN gdal-config --version
+# Place executables from the created venv onto the PATH
+ENV PATH="/app/.venv/bin:$PATH"
 
-# Install Python dependencies
-COPY requirements.txt /app/
+# Reset the entrypoint, don't invoke `uv`
+ENTRYPOINT []
 
-# Install GDAL and Python dependencies including development packages
-RUN pip install --no-cache-dir wheel setuptools \
-    && pip install --no-cache-dir GDAL==$(gdal-config --version) \
-    && pip install --no-cache-dir -r requirements.txt \
-    # Added development tools
-    && pip install --no-cache-dir \
-    debugpy \
-    django-debug-toolbar \
-    ipdb \
-    pytest \
-    pytest-django \
-    pytest-cov
+# Command to run the Django development server
+# The application code will be mounted as a volume
+EXPOSE 8000
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
