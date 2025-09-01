@@ -53,7 +53,7 @@ class CustomUserAdmin(UserAdmin):
             'classes': ('wide',),
             'fields': ('email', 'username', 'password1', 'password2', 'is_staff', 'is_superuser'),
         }),
-        (_('Chat Management'), {'fields': ('daily_chat_quota',)}),
+        (_('Chat Management'), {'fields': ('daily_message_quota',)}),
         (_('Subscription'), {'fields': ('subscription_type', 'subscription_expiry')}),
     )
 
