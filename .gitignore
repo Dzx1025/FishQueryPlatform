@@ -121,3 +121,4 @@ uploads/
 data/
 neo4j/data/
 qdrant_storage/
+test.py

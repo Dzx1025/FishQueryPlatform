@@ -11,7 +11,7 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -28,13 +28,13 @@ services:
       - ./hasura/:/hasura/
     environment:
       HASURA_GRAPHQL_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgis:5432/${POSTGRES_DB}
-      HASURA_GRAPHQL_ENABLE_CONSOLE: "true"    # Enabled console for development
-      HASURA_GRAPHQL_DEV_MODE: "true"         # Enabled dev mode
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "true" # Enabled console for development
+      HASURA_GRAPHQL_DEV_MODE: "true" # Enabled dev mode
       HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_ADMIN_SECRET}
       HASURA_GRAPHQL_UNAUTHORIZED_ROLE: anonymous
       HASURA_GRAPHQL_JWT_SECRET: ${HASURA_JWT_SECRET}
       HASURA_GRAPHQL_ENABLE_TELEMETRY: "false"
-      HASURA_GRAPHQL_LOG_LEVEL: debug         # Changed to debug
+      HASURA_GRAPHQL_LOG_LEVEL: debug # Changed to debug
 
   django:
     env_file:
@@ -49,11 +49,12 @@ services:
       postgis:
         condition: service_healthy
     environment:
-      QDRANT_URL: https://qdrant.fishquery.dzx1025.com
+      QDRANT_URL: https://qdrant.fishquery.dzx1025.com:443
       DJANGO_SETTINGS_MODULE: FishQueryPlatform.settings.dev
     volumes:
-      - .:/app  # Added volume mount for hot reload
-      - venv_data:/app/.venv  # Persist virtual environment
+      - .:/app # Added volume mount for hot reload
+      - venv_data:/app/.venv # Persist virtual environment
+    command: uvicorn FishQueryPlatform.asgi:application --reload --host 0.0.0.0 --port 8000
 
 volumes:
   postgis-data:
