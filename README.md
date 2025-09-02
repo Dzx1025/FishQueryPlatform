@@ -61,7 +61,6 @@ Then `python manage.py migrate` to apply migrations.
 If you want to use the admin interface, you need to create a superuser.
 
 Run `python manage.py createsuperuser` to create a superuser.
-`python manage.py collectstatic --noinput` to collect static files.
 
 Then `exit` to leave the container.
 
