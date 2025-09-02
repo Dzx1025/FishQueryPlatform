@@ -57,6 +57,8 @@ WORKDIR /app
 # Copy the application from the builder
 COPY --from=builder --chown=django-user:django-user /app /app
 
+RUN python manage.py collectstatic --noinput
+
 # Switch to the non-root user
 USER django-user
 
