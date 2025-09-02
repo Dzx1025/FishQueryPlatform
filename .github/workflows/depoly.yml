@@ -43,7 +43,7 @@ jobs:
           script: |
             cd ${{ secrets.DEPLOY_PATH }}
             docker compose down
-            tar xzvf platform.tar
-            rm platform.tar
+            tar xzvf platform.tar.gz
+            rm platform.tar.gz
             cp ../.env .
             docker compose up -d --build
