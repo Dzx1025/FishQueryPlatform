@@ -1,68 +1,49 @@
-from django.utils.functional import SimpleLazyObject
-from rest_framework_simplejwt.authentication import JWTAuthentication
+import asyncio
 from django.conf import settings
-from django.contrib.auth import get_user_model
-from django.utils.deprecation import MiddlewareMixin
+from django.contrib.auth.models import AnonymousUser
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from loguru import logger
+from asgiref.sync import sync_to_async
 
-User = get_user_model()
 
-
-def get_user_jwt(request):
-    """
-    Extract JWT token from cookies and retrieve the user
-
-    Args:
-        request: The HTTP request object containing cookies
-
-    Returns:
-        User object if token is valid, None otherwise
-    """
-    # Get token from cookies
-    token = request.COOKIES.get(settings.SIMPLE_JWT.get('AUTH_COOKIE'))
-
-    if token:
-        # Validate token using JWTAuthentication
-        auth = JWTAuthentication()
-        try:
-            # Don't add 'Bearer' prefix - the token in the cookie is the raw token
-            validated_token = auth.get_validated_token(token)
-            user = auth.get_user(validated_token)
+def get_user_from_jwt_token_sync(request):
+    token = request.COOKIES.get(settings.SIMPLE_JWT.get("AUTH_COOKIE"))
+    if not token:
+        return getattr(request, "user", AnonymousUser())
+    request.META["HTTP_AUTHORIZATION"] = f"Bearer {token}"
+    auth = JWTAuthentication()
+    try:
+        user_auth_tuple = auth.authenticate(request)
+        if user_auth_tuple:
+            user, _ = user_auth_tuple
             return user
-        except Exception as e:
-            print(f"JWT Authentication error: {str(e)}")
-            return None
+        return AnonymousUser()
+    except Exception as e:
+        logger.warning(f"JWT authentication failed: {e}")
+        return AnonymousUser()
 
-    return None
 
-
-class JWTCookieMiddleware(MiddlewareMixin):
+class JWTCookieMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
-        super().__init__(get_response)
+        self.get_user_async = sync_to_async(
+            get_user_from_jwt_token_sync, thread_sensitive=True
+        )
 
     def __call__(self, request):
-        # Skip JWT authentication for admin URLs
+        # Admin uses its own session authentication, our JWT logic should not intervene
         if request.path.startswith("/admin/"):
             return self.get_response(request)
 
-        # Token authentication
-        self.process_request(request)
+        if asyncio.iscoroutinefunction(self.get_response):
+            return self.acall_logic(request)
 
-        # Get view function information (simulate process_view call)
-        response = self.get_response(request)
+        # Handle other synchronous requests (if any)
+        request.user = get_user_from_jwt_token_sync(request)
+        return self.get_response(request)
 
-        return response
-
-    def process_request(self, request):
-        if not hasattr(request, 'user') or request.user.is_anonymous:
-            request.user = SimpleLazyObject(lambda: get_user_jwt(request))
-
-    def process_view(self, request, view_func, view_args, view_kwargs):
-        # Get JWT token from cookie
-        token = request.COOKIES.get(settings.SIMPLE_JWT.get('AUTH_COOKIE'))
-
-        if token:
-            # If token exists in cookie, add it to the Authorization header
-            request.META['HTTP_AUTHORIZATION'] = f"Bearer {token}"
-
-        return None
+    async def acall_logic(self, request):
+        """Logic specifically for handling asynchronous requests."""
+        # Admin path is already handled in __call__, no need to check here
+        request.user = await self.get_user_async(request)
+        return await self.get_response(request)
