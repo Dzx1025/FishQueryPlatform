@@ -291,8 +291,8 @@ class AIService:
             f"\n\n{i}. {doc['page_content']}\n\n" for i, doc in enumerate(documents, 1)
         )
 
-        # Create QA developer prompt
-        qa_dev_prompt = (
+        # Create response instruction
+        response_instruction = (
             "You are an expert in Australian recreational fishing regulations, particularly those published by the Department of Primary Industries and Regional Development, Government of Western Australia. "
             "You will be given a set of related contexts to the question, which are numbered sequentially starting from 1. "
             "Each context has an implicit reference number based on its position in the array (first context is 1, second is 2, etc.). "
@@ -302,14 +302,17 @@ class AIService:
             "Say 'information is missing on' followed by the related topic, if the given context do not provide sufficient information. "
             "If a sentence draws from multiple contexts, please list all applicable citations, like [citation:1][citation:2]. "
             "Other than code and specific names and citations, your answer must be written in the same language as the question. "
-            "Be concise.\n\nContext: " + formatted_context + "\n\n"
-            "Remember: Cite contexts by their position number (1 for first context, 2 for second, etc.) and don't blindly "
+            "Be concise. "
+            "Remember: Cite contexts by their position number (1 for first context, 2 for second, etc.) and don't blindly. "
             "Repeat the contexts verbatim."
         )
 
         # Format messages for OpenAI API
         messages = [
-            {"role": "developer", "content": qa_dev_prompt},
+            {
+                "role": "developer",
+                "content": f"Context: {formatted_context}",
+            },
             {"role": "user", "content": query},
         ]
 
@@ -336,6 +339,7 @@ class AIService:
             stream = await self.openai_client.responses.create(
                 model=self.openai_model,
                 input=messages,
+                instructions=response_instruction,
                 max_output_tokens=1024,
                 temperature=0.1,
                 stream=True,
