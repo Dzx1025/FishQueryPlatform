@@ -4,7 +4,7 @@ import time
 from typing import Dict, List, AsyncGenerator, Optional
 import requests
 from loguru import logger
-from qdrant_client import QdrantClient
+from qdrant_client import AsyncQdrantClient
 from sentence_transformers import CrossEncoder
 from openai import AsyncOpenAI
 
@@ -87,11 +87,11 @@ class AIService:
             )
 
     @property
-    def qdrant_client(self) -> QdrantClient:
+    def qdrant_client(self) -> AsyncQdrantClient:
         """Lazy-loaded Qdrant client."""
         if self._qdrant_client is None:
             logger.info(f"Connecting to Qdrant at: {self.qdrant_url}")
-            self._qdrant_client = QdrantClient(
+            self._qdrant_client = AsyncQdrantClient(
                 url=self.qdrant_url, https=True, api_key=self.qdrant_api_key
             )
         return self._qdrant_client
@@ -183,7 +183,7 @@ class AIService:
 
         raise Exception("Failed to generate embedding for query")
 
-    def search_qdrant(
+    async def search_qdrant(
         self, query_embedding: List[float], top_k: Optional[int] = None
     ) -> List[Dict]:
         """
@@ -202,7 +202,7 @@ class AIService:
         logger.info(f"Searching Qdrant for top {top_k} results")
 
         try:
-            search_results = self.qdrant_client.query_points(
+            search_results = await self.qdrant_client.query_points(
                 collection_name=self.collection_name,
                 query=query_embedding,
                 limit=top_k,
@@ -378,7 +378,7 @@ class AIService:
             query_embedding = self.get_query_embedding(query)
 
             # Search for similar documents
-            search_results = self.search_qdrant(query_embedding)
+            search_results = await self.search_qdrant(query_embedding)
 
             # Rerank results if enabled
             if use_reranking and search_results:
