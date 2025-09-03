@@ -202,20 +202,21 @@ class AIService:
         logger.info(f"Searching Qdrant for top {top_k} results")
 
         try:
-            search_results = self.qdrant_client.search(
+            search_results = self.qdrant_client.query_points(
                 collection_name=self.collection_name,
-                query_vector=query_embedding,
+                query=query_embedding,
                 limit=top_k,
+                score_threshold=0.5,
             )
 
             # Extract documents from search results
             documents = []
-            for result in search_results:
+            for point in search_results.points:
                 documents.append(
                     {
-                        "page_content": result.payload["page_content"],
-                        "metadata": result.payload["metadata"],
-                        "score": result.score,
+                        "page_content": point.payload["page_content"],
+                        "metadata": point.payload["metadata"],
+                        "score": point.score,
                     }
                 )
 
