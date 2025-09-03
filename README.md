@@ -1,5 +1,7 @@
 # Fish Query Project Platform
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Dzx1025/FishQueryPlatform)
+
 ## How to set up services
 
 ### 1. Clone this repo
