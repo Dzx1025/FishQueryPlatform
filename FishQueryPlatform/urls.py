@@ -37,13 +37,10 @@ schema_view = get_schema_view(
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-
     # Core app URLs
     path("api/auth/", include("core.urls")),
-
     # Chat app URLs
     path("api/chat/", include("chats.urls")),
-
     # Swagger URLs
     re_path(
         r"^swagger(?P<format>\.json|\.yaml)$",
@@ -55,7 +52,6 @@ urlpatterns = [
         schema_view.with_ui("swagger", cache_timeout=0),
         name="schema-swagger-ui",
     ),
-
     # Redoc URLs
     path("redoc/", schema_view.with_ui("redoc", cache_timeout=0), name="schema-redoc"),
 ]

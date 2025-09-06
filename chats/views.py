@@ -218,7 +218,6 @@ class ChatMessageView(ChatBaseView):
     """
 
     async def post(self, request, chat_id: UUID):
-        user_in_view = getattr(request, "user", "AttributeNotSet")
         # 1. Perform pre-flight checks asynchronously
         allow, error_response = await self.check_throttle_async(request)
         if not allow:
