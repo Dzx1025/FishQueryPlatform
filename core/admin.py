@@ -9,21 +9,21 @@ from django import forms
 class CustomUserAdminForm(forms.ModelForm):
     class Meta:
         model = CustomUser
-        fields = '__all__'
+        fields = "__all__"
 
     def clean_username(self):
         # Override the default unique username validation
-        return self.cleaned_data['username']
+        return self.cleaned_data["username"]
 
 
 class CustomUserCreationForm(UserCreationForm):
     class Meta:
         model = CustomUser
-        fields = ('email', 'username')
+        fields = ("email", "username")
 
     def clean_username(self):
         # Override the default unique username validation for new users
-        return self.cleaned_data['username']
+        return self.cleaned_data["username"]
 
 
 class CustomUserAdmin(UserAdmin):
@@ -32,29 +32,63 @@ class CustomUserAdmin(UserAdmin):
 
     # Rest of your class remains the same
     model = CustomUser
-    list_display = ('email', 'username', 'is_staff', 'subscription_type', 'daily_message_quota')
-    list_filter = ('is_staff', 'is_superuser', 'subscription_type')
-    search_fields = ('email', 'username')
-    ordering = ('email',)
+    list_display = (
+        "email",
+        "username",
+        "is_staff",
+        "subscription_type",
+        "daily_message_quota",
+    )
+    list_filter = ("is_staff", "is_superuser", "subscription_type")
+    search_fields = ("email", "username")
+    ordering = ("email",)
 
     fieldsets = (
-        (None, {'fields': ('email', 'username', 'password')}),
-        (_('Personal info'), {'fields': ()}),
-        (_('Permissions'), {
-            'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
-        }),
-        (_('Important dates'), {'fields': ('last_login', 'date_joined')}),
-        (_('Chat Management'), {'fields': ('daily_message_quota', 'messages_used_today', 'last_message_reset')}),
-        (_('Subscription'), {'fields': ('subscription_type', 'subscription_expiry')}),
+        (None, {"fields": ("email", "username", "password")}),
+        (_("Personal info"), {"fields": ()}),
+        (
+            _("Permissions"),
+            {
+                "fields": (
+                    "is_active",
+                    "is_staff",
+                    "is_superuser",
+                    "groups",
+                    "user_permissions",
+                ),
+            },
+        ),
+        (_("Important dates"), {"fields": ("last_login", "date_joined")}),
+        (
+            _("Chat Management"),
+            {
+                "fields": (
+                    "daily_message_quota",
+                    "messages_used_today",
+                    "last_message_reset",
+                )
+            },
+        ),
+        (_("Subscription"), {"fields": ("subscription_type", "subscription_expiry")}),
     )
 
     add_fieldsets = (
-        (None, {
-            'classes': ('wide',),
-            'fields': ('email', 'username', 'password1', 'password2', 'is_staff', 'is_superuser'),
-        }),
-        (_('Chat Management'), {'fields': ('daily_message_quota',)}),
-        (_('Subscription'), {'fields': ('subscription_type', 'subscription_expiry')}),
+        (
+            None,
+            {
+                "classes": ("wide",),
+                "fields": (
+                    "email",
+                    "username",
+                    "password1",
+                    "password2",
+                    "is_staff",
+                    "is_superuser",
+                ),
+            },
+        ),
+        (_("Chat Management"), {"fields": ("daily_message_quota",)}),
+        (_("Subscription"), {"fields": ("subscription_type", "subscription_expiry")}),
     )
 
 

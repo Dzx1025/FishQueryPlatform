@@ -26,14 +26,14 @@ class CustomUserManager(BaseUserManager):
         """
         Create and save a SuperUser with the given email, username and password.
         """
-        extra_fields.setdefault('is_staff', True)
-        extra_fields.setdefault('is_superuser', True)
-        extra_fields.setdefault('is_active', True)
+        extra_fields.setdefault("is_staff", True)
+        extra_fields.setdefault("is_superuser", True)
+        extra_fields.setdefault("is_active", True)
 
-        if extra_fields.get('is_staff') is not True:
-            raise ValueError('Superuser must have is_staff=True.')
-        if extra_fields.get('is_superuser') is not True:
-            raise ValueError('Superuser must have is_superuser=True.')
+        if extra_fields.get("is_staff") is not True:
+            raise ValueError("Superuser must have is_staff=True.")
+        if extra_fields.get("is_superuser") is not True:
+            raise ValueError("Superuser must have is_superuser=True.")
 
         return self.create_user(email, username, password, **extra_fields)
 
@@ -43,76 +43,75 @@ class CustomUser(AbstractUser):
     Custom User Model that uses email as the unique identifier
     instead of username and allows for non-unique usernames.
     """
+
     email = models.EmailField(
         unique=True,
         verbose_name="Email Address",
         error_messages={
-            'unique': "A user with that email already exists.",
+            "unique": "A user with that email already exists.",
         },
     )
     username = models.CharField(
         max_length=150,
         verbose_name="Username",
-        help_text="Username is not used for login and does not need to be unique."
+        help_text="Username is not used for login and does not need to be unique.",
     )
 
     # Override the groups and user_permissions fields with custom related_name
     groups = models.ManyToManyField(
-        'auth.Group',
-        verbose_name='groups',
+        "auth.Group",
+        verbose_name="groups",
         blank=True,
-        help_text='The groups this user belongs to.',
-        related_name='custom_user_set',
-        related_query_name='custom_user',
+        help_text="The groups this user belongs to.",
+        related_name="custom_user_set",
+        related_query_name="custom_user",
     )
     user_permissions = models.ManyToManyField(
-        'auth.Permission',
-        verbose_name='user permissions',
+        "auth.Permission",
+        verbose_name="user permissions",
         blank=True,
-        help_text='Specific permissions for this user.',
-        related_name='custom_user_set',
-        related_query_name='custom_user',
+        help_text="Specific permissions for this user.",
+        related_name="custom_user_set",
+        related_query_name="custom_user",
     )
 
     # Chat quota management
     daily_message_quota = models.IntegerField(
         default=10,
         verbose_name="Daily Chat Quota",
-        help_text="Maximum number of chats allowed per day"
+        help_text="Maximum number of chats allowed per day",
     )
     messages_used_today = models.IntegerField(
         default=0,
         verbose_name="Chats Used Today",
-        help_text="Number of chats used today"
+        help_text="Number of chats used today",
     )
     last_message_reset = models.DateField(
         default=timezone.now,
         verbose_name="Last Chat Counter Reset",
-        help_text="Date when the chat counter was last reset"
+        help_text="Date when the chat counter was last reset",
     )
 
     # Subscription management
     SUBSCRIPTION_CHOICES = [
-        ('free', 'Free'),
-        ('basic', 'Basic'),
-        ('premium', 'Premium'),
-        ('enterprise', 'Enterprise'),
+        ("free", "Free"),
+        ("basic", "Basic"),
+        ("premium", "Premium"),
+        ("enterprise", "Enterprise"),
     ]
     subscription_type = models.CharField(
         max_length=20,
         choices=SUBSCRIPTION_CHOICES,
-        default='free',
-        verbose_name="Subscription Type"
+        default="free",
+        verbose_name="Subscription Type",
     )
     subscription_expiry = models.DateTimeField(
-        null=True,
-        blank=True,
-        verbose_name="Subscription Expiry Date"
+        null=True, blank=True, verbose_name="Subscription Expiry Date"
     )
 
     # Email is used for login, not username
-    USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['username']  # Required when running createsuperuser
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS = ["username"]  # Required when running createsuperuser
 
     objects = CustomUserManager()
 
@@ -130,7 +129,7 @@ class CustomUser(AbstractUser):
         if self.last_message_reset != today:
             self.messages_used_today = 0
             self.last_message_reset = today
-            self.save(update_fields=['messages_used_today', 'last_message_reset'])
+            self.save(update_fields=["messages_used_today", "last_message_reset"])
 
     def can_send_message(self):
         """Check if the user can chat based on their quota"""
@@ -141,13 +140,13 @@ class CustomUser(AbstractUser):
         """Use one chat from the quota if available"""
         if self.can_send_message():
             self.messages_used_today += 1
-            self.save(update_fields=['messages_used_today'])
+            self.save(update_fields=["messages_used_today"])
             return True
         return False
 
     def is_subscription_active(self):
         """Check if the user's subscription is active"""
-        if self.subscription_type == 'free':
+        if self.subscription_type == "free":
             return True
         if not self.subscription_expiry:
             return False

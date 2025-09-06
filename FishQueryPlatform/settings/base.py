@@ -11,12 +11,12 @@ if not SECRET_KEY:
     raise ValueError("No SECRET_KEY set in environment variables")
 
 # Session settings for anonymous users
-SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+SESSION_ENGINE = "django.contrib.sessions.backends.db"
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 30  # 30 days in seconds
 
 # Django-ratelimit settings
-RATELIMIT_USE_CACHE = 'default'
-RATELIMIT_VIEW = 'chats.utils.ratelimited_error'
+RATELIMIT_USE_CACHE = "default"
+RATELIMIT_VIEW = "chats.utils.ratelimited_error"
 
 AUTH_USER_MODEL = "core.CustomUser"
 
@@ -137,14 +137,14 @@ REST_FRAMEWORK = {
         "rest_framework.authentication.TokenAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ],
-    'EXCEPTION_HANDLER': 'chats.utils.custom_exception_handler',
-    'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle',
+    "EXCEPTION_HANDLER": "chats.utils.custom_exception_handler",
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
     ],
-    'DEFAULT_THROTTLE_RATES': {
-        'anon': '10/minute',
-        'user': '1000/day',
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "10/minute",
+        "user": "1000/day",
     },
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",

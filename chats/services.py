@@ -154,7 +154,7 @@ class AIService:
 
                 if response.status_code == 200:
                     embedding = response.json()["embeddings"][0]
-                    logger.success(f"Generated embedding for query successfully")
+                    logger.success("Generated embedding for query successfully")
                     return embedding
                 elif response.status_code == 429:  # Rate limit
                     retry_count += 1
