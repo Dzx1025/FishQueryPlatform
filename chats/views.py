@@ -4,14 +4,16 @@ import hashlib
 from datetime import timedelta
 from uuid import UUID
 
-from django.core.cache import cache
 from asgiref.sync import sync_to_async
+from django.core.cache import cache
 from django.http import StreamingHttpResponse, JsonResponse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from loguru import logger
+
+from chats.utils import generate_title_from_message
 
 from .models import Chat, Message, MessageType
 from .services import AIService
@@ -20,13 +22,6 @@ from .services import AIService
 GlobalDailyMessageLimit = 30
 MessageMaxLength = 200
 DeviceCookieMaxAge = 365 * 24 * 60 * 60  # 1 year in seconds
-
-
-# --- Helper Functions ---
-def generate_title_from_message(message: str) -> str:
-    """Generates a short title from the first message."""
-    clean_message = " ".join(message.split())
-    return clean_message[:20] + "..." if len(clean_message) > 20 else clean_message
 
 
 # --- Base View with Shared Logic ---
@@ -156,8 +151,6 @@ class ChatBaseView(View):
 
 
 # --- Views ---
-
-
 @method_decorator(csrf_exempt, name="dispatch")
 class ChatCreateView(ChatBaseView):
     """

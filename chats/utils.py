@@ -39,3 +39,9 @@ def custom_exception_handler(exc, context):
         message="An unexpected error occurred",
         code=status.HTTP_500_INTERNAL_SERVER_ERROR,
     )
+
+
+def generate_title_from_message(message: str) -> str:
+    """Generates a short title from the first message."""
+    clean_message = " ".join(message.split())
+    return clean_message[:20] + "..." if len(clean_message) > 20 else clean_message

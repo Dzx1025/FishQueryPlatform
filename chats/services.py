@@ -1,7 +1,7 @@
 import json
 import os
 import time
-from typing import Dict, List, AsyncGenerator, Optional
+from typing import AsyncGenerator
 import requests
 from loguru import logger
 from qdrant_client import AsyncQdrantClient
@@ -25,7 +25,7 @@ class AIService:
         self.collection_name = os.environ.get("COLLECTION_NAME")
         self.qdrant_api_key = os.environ.get("QDRANT_API_KEY")
 
-        # Nomic API configuration
+        # Embedding configuration
         self.nomic_token = os.environ.get("NOMIC_TOKEN")
         self.nomic_url = "https://api-atlas.nomic.ai/v1/embedding/text"
         self.nomic_model = os.environ.get("EMBEDDING_MODEL")
@@ -39,7 +39,7 @@ class AIService:
         self.top_k = int(os.environ.get("TOP_K"))
         self.rerank_top_k = int(os.environ.get("RERANK_TOP_K"))
 
-        # OpenAI configuration
+        # LLM configuration
         self.openai_api_key = os.environ.get("OPENAI_API_KEY")
         self.openai_api_url = os.environ.get("OPENAI_API_URL")
         self.openai_model = os.environ.get("OPENAI_MODEL")
@@ -119,7 +119,7 @@ class AIService:
 
         return self._openai_client
 
-    def get_query_embedding(self, query: str) -> List[float]:
+    def get_query_embedding(self, query: str) -> list[float]:
         """
         Generate embedding for the query text.
 
@@ -184,8 +184,8 @@ class AIService:
         raise Exception("Failed to generate embedding for query")
 
     async def search_qdrant(
-        self, query_embedding: List[float], top_k: Optional[int] = None
-    ) -> List[Dict]:
+        self, query_embedding: list[float], top_k: int | None = None
+    ) -> list[dict]:
         """
         Search Qdrant using the query embedding.
 
@@ -227,8 +227,8 @@ class AIService:
             raise
 
     def rerank_results(
-        self, query: str, documents: List[Dict], top_k: Optional[int] = None
-    ) -> List[Dict]:
+        self, query: str, documents: list[dict], top_k: int | None = None
+    ) -> list[dict]:
         """
         Rerank the results using a cross-encoder model.
 
@@ -274,7 +274,7 @@ class AIService:
             return sorted(documents, key=lambda x: x["score"], reverse=True)[:top_k]
 
     async def generate_response(
-        self, query: str, documents: List[Dict]
+        self, query: str, documents: list[dict]
     ) -> AsyncGenerator[str, None]:
         """
         Generate a streaming response using OpenAI's official client library.
