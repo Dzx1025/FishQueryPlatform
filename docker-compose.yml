@@ -30,7 +30,7 @@ services:
       QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
 
   hasura:
-    image: hasura/graphql-engine:v2.43.0.cli-migrations-v3
+    image: hasura/graphql-engine:v2.48.4.cli-migrations-v3
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"
