@@ -17,7 +17,7 @@ services:
       retries: 5
 
   hasura:
-    image: hasura/graphql-engine:v2.43.0.cli-migrations-v3
+    image: hasura/graphql-engine:v2.48.4.cli-migrations-v3
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -55,7 +55,8 @@ services:
     volumes:
       - .:/app # Added volume mount for hot reload
       - venv_data:/app/.venv # Persist virtual environment
-    command: uvicorn FishQueryPlatform.asgi:application --reload --host 0.0.0.0 --port 8000
+    command: python manage.py runserver 0.0.0.0:8000
+#    command: uvicorn FishQueryPlatform.asgi:application --reload --host 0.0.0.0 --port 8000
 
 volumes:
   postgis-data:
