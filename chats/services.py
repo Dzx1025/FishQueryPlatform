@@ -1,12 +1,42 @@
-import json
 import os
 import time
-from typing import AsyncGenerator
+from dataclasses import dataclass
+from enum import Enum
+from typing import AsyncGenerator, Any
+
 import requests
 from loguru import logger
 from qdrant_client import AsyncQdrantClient
 from sentence_transformers import CrossEncoder
 from openai import AsyncOpenAI
+from openai.types.responses import EasyInputMessageParam
+
+
+class StreamEventType(Enum):
+    """Stream event types for RAG responses."""
+
+    SOURCES = "sources"  # Retrieved source documents
+    TEXT_DELTA = "text"  # LLM text chunk
+    DONE = "done"  # Stream complete
+    ERROR = "error"  # Error occurred
+
+
+@dataclass
+class SourceDocument:
+    """Represents a retrieved source document."""
+
+    index: int  # 1-based index for citation reference
+    content: str  # Document content
+    metadata: dict  # Document metadata (url, title, etc.)
+    score: float  # Relevance score
+
+
+@dataclass
+class StreamEvent:
+    """Structured stream event data."""
+
+    type: StreamEventType
+    data: dict | str | list | None = None
 
 
 class AIService:
@@ -16,10 +46,7 @@ class AIService:
     """
 
     def __init__(self):
-        """
-        Initialize the AIService with configuration.
-        """
-
+        """Initialize the AIService with configuration."""
         # Qdrant configuration
         self.qdrant_url = os.environ.get("QDRANT_URL")
         self.collection_name = os.environ.get("COLLECTION_NAME")
@@ -29,25 +56,22 @@ class AIService:
         self.nomic_token = os.environ.get("NOMIC_TOKEN")
         self.nomic_url = "https://api-atlas.nomic.ai/v1/embedding/text"
         self.nomic_model = os.environ.get("EMBEDDING_MODEL")
-        self.task_type = (
-            "search_query"  # Using search_query for queries rather than search_document
-        )
-        self.vector_size = 768  # Nomic embeddings dimensionality
+        self.task_type = "search_query"
+        self.vector_size = 768
 
         # Reranking configuration
         self.rerank_model_name = os.environ.get("RERANK_MODEL")
-        self.top_k = int(os.environ.get("TOP_K"))
-        self.rerank_top_k = int(os.environ.get("RERANK_TOP_K"))
+        self.top_k = int(os.environ.get("TOP_K", 10))
+        self.rerank_top_k = int(os.environ.get("RERANK_TOP_K", 5))
 
         # LLM configuration
         self.openai_api_key = os.environ.get("OPENAI_API_KEY")
         self.openai_api_url = os.environ.get("OPENAI_API_URL")
         self.openai_model = os.environ.get("OPENAI_MODEL")
 
-        # Validate required configuration
         self._validate_config()
 
-        # Initialize client properties that will be created on demand
+        # Lazy-loaded clients
         self._qdrant_client = None
         self._rerank_model = None
         self._openai_client = None
@@ -62,7 +86,6 @@ class AIService:
             )
         if not self.qdrant_api_key:
             logger.warning("Qdrant API key not provided. Vector search may not work.")
-
         if not self.nomic_token:
             logger.warning(
                 "Nomic token not provided. Embedding generation may not work."
@@ -71,16 +94,8 @@ class AIService:
             logger.warning(
                 "Nomic embedding model not provided. Embedding generation may not work."
             )
-
         if not self.rerank_model_name:
             logger.warning("Rerank model name not provided. Reranking may not work.")
-        if not self.top_k:
-            logger.warning("Top K not provided. Defaulting to 10.")
-            self.top_k = 10
-        if not self.rerank_top_k:
-            logger.warning("Rerank Top K not provided. Defaulting to 5.")
-            self.rerank_top_k = 5
-
         if not self.openai_api_key:
             logger.warning(
                 "OpenAI API key not provided. LLM functionality may not work."
@@ -110,25 +125,12 @@ class AIService:
         if self._openai_client is None:
             self._openai_client = AsyncOpenAI(
                 api_key=self.openai_api_key,
-                base_url=(
-                    self.openai_api_url
-                    if hasattr(self, "openai_api_url") and self.openai_api_url
-                    else None
-                ),
+                base_url=self.openai_api_url if self.openai_api_url else None,
             )
-
         return self._openai_client
 
     def get_query_embedding(self, query: str) -> list[float]:
-        """
-        Generate embedding for the query text.
-
-        Args:
-            query: The query text to embed
-
-        Returns:
-            List of embedding values
-        """
+        """Generate embedding for the query text."""
         logger.info(f"Generating embedding for query: {query}")
 
         headers = {
@@ -136,7 +138,6 @@ class AIService:
             "Content-Type": "application/json",
         }
 
-        # Prepare payload for Nomic API
         payload = {
             "model": self.nomic_model,
             "texts": [query],
@@ -144,7 +145,6 @@ class AIService:
             "dimensionality": self.vector_size,
         }
 
-        # Make API request with retry logic
         max_retries = 3
         retry_count = 0
 
@@ -156,9 +156,9 @@ class AIService:
                     embedding = response.json()["embeddings"][0]
                     logger.success("Generated embedding for query successfully")
                     return embedding
-                elif response.status_code == 429:  # Rate limit
+                elif response.status_code == 429:
                     retry_count += 1
-                    wait_time = 2**retry_count  # Exponential backoff
+                    wait_time = 2**retry_count
                     logger.warning(
                         f"Rate limited by Nomic API. Retrying in {wait_time} seconds..."
                     )
@@ -186,16 +186,7 @@ class AIService:
     async def search_qdrant(
         self, query_embedding: list[float], top_k: int | None = None
     ) -> list[dict]:
-        """
-        Search Qdrant using the query embedding.
-
-        Args:
-            query_embedding: Vector embedding to search with
-            top_k: Number of results to return (defaults to self.top_k)
-
-        Returns:
-            List of document dictionaries with content, metadata and score
-        """
+        """Search Qdrant using the query embedding."""
         if top_k is None:
             top_k = self.top_k
 
@@ -209,7 +200,6 @@ class AIService:
                 score_threshold=0.5,
             )
 
-            # Extract documents from search results
             documents = []
             for point in search_results.points:
                 documents.append(
@@ -229,39 +219,22 @@ class AIService:
     def rerank_results(
         self, query: str, documents: list[dict], top_k: int | None = None
     ) -> list[dict]:
-        """
-        Rerank the results using a cross-encoder model.
-
-        Args:
-            query: Original query text
-            documents: List of documents to rerank
-            top_k: Number of results to return after reranking (defaults to self.rerank_top_k)
-
-        Returns:
-            Reranked list of documents
-        """
+        """Rerank the results using a cross-encoder model."""
         if top_k is None:
             top_k = self.rerank_top_k
 
         logger.info(f"Reranking {len(documents)} documents")
 
         try:
-            # Prepare pairs of (query, document text) for reranking
             pairs = [(query, doc["page_content"]) for doc in documents]
-
-            # Get reranking scores
             scores = self.rerank_model.predict(pairs)
 
-            # Add new scores to documents
             for i, score in enumerate(scores):
                 documents[i]["rerank_score"] = float(score)
 
-            # Sort by reranking score (descending)
             reranked_documents = sorted(
                 documents, key=lambda x: x["rerank_score"], reverse=True
             )
-
-            # Return top_k results
             top_results = reranked_documents[:top_k]
             logger.success(
                 f"Reranked documents and selected top {len(top_results)} results"
@@ -269,118 +242,142 @@ class AIService:
             return top_results
         except Exception as e:
             logger.error(f"Failed to rerank results: {e}")
-            # Fallback to original scores if reranking fails
             logger.warning("Falling back to original scores")
             return sorted(documents, key=lambda x: x["score"], reverse=True)[:top_k]
 
-    async def generate_response(
-        self, query: str, documents: list[dict]
-    ) -> AsyncGenerator[str, None]:
+    def _build_sources(self, documents: list[dict]) -> list[SourceDocument]:
+        """Convert raw documents to SourceDocument objects with 1-based indices."""
+        return [
+            SourceDocument(
+                index=i + 1,
+                content=doc["page_content"],
+                metadata=doc["metadata"],
+                score=doc.get("rerank_score", doc.get("score", 0.0)),
+            )
+            for i, doc in enumerate(documents)
+        ]
+
+    def _get_response_instruction(self) -> str:
         """
-        Generate a streaming response using OpenAI's official client library.
-
-        Args:
-            query: User query
-            documents: Retrieved documents for context
-
-        Yields:
-            Chunks of the response in the format required by the frontend
+        Get the system instruction for LLM response generation.
+        Instructs LLM to use [citation:N] format for inline citations.
         """
-        # Format documents
-        formatted_context = "".join(
-            f"\n\n{i}. {doc['page_content']}\n\n" for i, doc in enumerate(documents, 1)
-        )
-
-        # Create response instruction
-        response_instruction = (
-            "You are an expert in Australian recreational fishing regulations, particularly those published by the Department of Primary Industries and Regional Development, Government of Western Australia. "
+        return (
+            "You are an expert in Australian recreational fishing regulations, particularly those published by "
+            "the Department of Primary Industries and Regional Development, Government of Western Australia. "
             "You will be given a set of related contexts to the question, which are numbered sequentially starting from 1. "
-            "Each context has an implicit reference number based on its position in the array (first context is 1, second is 2, etc.). "
-            "Please use these contexts and cite them using the format [citation:x] at the end of each sentence where applicable. "
+            "\n\n"
+            "CITATION FORMAT: You MUST cite sources using the exact format [citation:N] where N is the context number. "
+            "Place citations immediately after the relevant statement. Examples:\n"
+            "- Single citation: 'The bag limit is 2 fish per day [citation:1].'\n"
+            "- Multiple citations: 'Barramundi must be at least 55cm [citation:1][citation:3].'\n"
+            "\n"
+            "RULES:\n"
+            "1. Every factual claim must have at least one citation.\n"
+            "2. Place [citation:N] at the end of the sentence or clause it supports.\n"
+            "3. Use multiple citations when information comes from multiple sources.\n"
+            "4. Do not fabricate citations - only cite contexts that actually support your statement.\n"
+            "5. Do not repeat the contexts verbatim.\n"
+            "\n"
             "Your answer must be correct, accurate and written by an expert using an unbiased and professional tone. "
-            "Please limit to 1024 tokens. Do not give any information that is not related to the question, and do not repeat. "
+            "Please limit to 1024 tokens. Do not give any information that is not related to the question. "
             "Say 'information is missing on' followed by the related topic, if the given context do not provide sufficient information. "
-            "If a sentence draws from multiple contexts, please list all applicable citations, like [citation:1][citation:2]. "
-            "Other than code and specific names and citations, your answer must be written in the same language as the question. "
-            "Be concise. "
-            "Remember: Cite contexts by their position number (1 for first context, 2 for second, etc.) and don't blindly. "
-            "Repeat the contexts verbatim."
+            "Be concise."
         )
 
-        # Format messages for OpenAI API
-        messages = [
-            {
-                "role": "developer",
-                "content": f"Context: {formatted_context}",
-            },
+    async def generate_response_stream(
+        self, query: str, sources: list[SourceDocument]
+    ) -> AsyncGenerator[StreamEvent, None]:
+        """
+        Generate streaming response yielding structured StreamEvent objects.
+
+        Stream order:
+        1. SOURCES event - Contains all source documents for citation lookup
+        2. TEXT_DELTA events - LLM response chunks with inline [citation:N] markers
+        3. DONE event - Stream complete
+        """
+        # Build context from sources
+        formatted_context = "\n\n".join(
+            f"[Context {src.index}]: {src.content}" for src in sources
+        )
+
+        messages: list[EasyInputMessageParam] = [
+            {"role": "developer", "content": f"Context:\n{formatted_context}"},
             {"role": "user", "content": query},
         ]
 
         try:
-            # First, serialize context information for response
-            serializable_context = []
-            for i, doc in enumerate(documents):
-                serializable_doc = {
-                    "page_content": doc["page_content"].replace('"', '\\"'),
-                    "metadata": doc["metadata"],
+            # 1. Yield sources first so frontend can build citation lookup
+            sources_data = [
+                {
+                    "index": src.index,
+                    "content": (
+                        src.content[:200] + "..."
+                        if len(src.content) > 200
+                        else src.content
+                    ),
+                    "metadata": src.metadata,
+                    "score": src.score,
                 }
-                serializable_context.append(serializable_doc)
+                for src in sources
+            ]
+            yield StreamEvent(type=StreamEventType.SOURCES, data=sources_data)
 
-            # Escape quotes and serialize
-            escaped_context = json.dumps({"context": serializable_context})
-
-            # Define separator
-            separator = "__LLM_RESPONSE__"
-
-            # Yield context info
-            yield f'0:"{escaped_context}{separator}"\n'
-
-            # Set up streaming request to OpenAI using the official client
-            stream = await self.openai_client.responses.create(
+            # 2. Prepare LLM request
+            kwargs: dict[str, Any] = dict(
                 model=self.openai_model,
                 input=messages,
-                instructions=response_instruction,
+                instructions=self._get_response_instruction(),
                 max_output_tokens=1024,
-                temperature=0.1,
                 stream=True,
             )
 
-            # Process streaming response
+            NO_TEMPERATURE_MODELS = {
+                "gpt-5",
+                "gpt-5.1",
+                "gpt-5.2",
+                "gpt-5-chat-latest",
+                "gpt-5.1-chat-latest",
+                "gpt-5.2-chat-latest",
+                "gpt-5-mini",
+                "gpt-5-nano",
+                "gpt-5.1-codex",
+                "gpt-5.1-codex-max",
+                "gpt-5-codex",
+                "gpt-5-pro",
+                "gpt-5.2-pro",
+            }
+
+            if self.openai_model not in NO_TEMPERATURE_MODELS:
+                kwargs["temperature"] = 0.1
+
+            stream = await self.openai_client.responses.create(**kwargs)
+
+            # 3. Stream text chunks with inline citations
             async for event in stream:
                 if event.type == "response.output_text.delta":
-                    content = event.delta
-                    yield f'0:"{content}"\n'
+                    yield StreamEvent(type=StreamEventType.TEXT_DELTA, data=event.delta)
 
-            # Return completion info
-            yield 'd:{"finishReason":"stop"}\n'
+            # 4. Done
+            yield StreamEvent(type=StreamEventType.DONE, data={"finishReason": "stop"})
 
         except Exception as e:
-            error_message = f"Error generating LLM question: {str(e)}"
-            logger.error(error_message)
-            yield f"3:{error_message}\n"
+            logger.error(f"Error generating LLM response: {e}")
+            yield StreamEvent(type=StreamEventType.ERROR, data=str(e))
 
     async def process_query_stream(
         self, query: str, use_reranking: bool = True
-    ) -> AsyncGenerator[str, None]:
+    ) -> AsyncGenerator[StreamEvent, None]:
         """
-        Process a query and return a streamed LLM response.
-        This is suitable for Django views that support streaming responses.
+        Process a query and yield structured StreamEvent objects.
 
-        Args:
-            query: User's query
-            use_reranking: Whether to use the reranking step
-
-        Yields:
-            Response chunks formatted for streaming to the frontend
+        This is the main entry point for streaming RAG responses.
+        The stream includes sources first, then text with inline citations.
         """
         try:
-            # Generate embedding for query
             query_embedding = self.get_query_embedding(query)
-
-            # Search for similar documents
             search_results = await self.search_qdrant(query_embedding)
 
-            # Rerank results if enabled
             if use_reranking and search_results:
                 final_results = self.rerank_results(query, search_results)
             else:
@@ -388,59 +385,37 @@ class AIService:
                     search_results, key=lambda x: x["score"], reverse=True
                 )[: self.rerank_top_k]
 
-            # Return error if no results found
             if not final_results:
-                error_msg = (
-                    "I don't have any knowledge base to help answer your question."
+                yield StreamEvent(
+                    type=StreamEventType.TEXT_DELTA,
+                    data="I don't have any knowledge base to help answer your question.",
                 )
-                yield f'0:"{error_msg}"\n'
-                yield 'd:{"finishReason":"stop","usage":{"promptTokens":0,"completionTokens":0}}\n'
+                yield StreamEvent(
+                    type=StreamEventType.DONE, data={"finishReason": "stop"}
+                )
                 return
 
-            # Generate LLM response with the documents
-            async for chunk in self.generate_response(query, final_results):
-                yield chunk
+            # Convert to SourceDocument objects
+            sources = self._build_sources(final_results)
+
+            async for event in self.generate_response_stream(query, sources):
+                yield event
 
         except Exception as e:
             logger.error(f"Query processing failed: {e}")
-            error_message = f"Error processing query: {str(e)}"
-            yield "3:{text}\n".format(text=error_message)
+            yield StreamEvent(type=StreamEventType.ERROR, data=str(e))
 
     async def process_query(self, query: str, use_reranking: bool = True) -> str:
         """
         Process a query and return the complete response as a string.
-        This is suitable for Django views that need the full response at once.
-
-        Args:
-            query: User's query
-            use_reranking: Whether to use the reranking step
-
-        Returns:
-            Complete response text
+        Suitable for non-streaming use cases.
         """
         full_response = ""
-        response_started = False
 
-        async for chunk in self.process_query_stream(query, use_reranking):
-            # Extract text content from the chunk format
-            if chunk.startswith('0:"'):
-                # Extract content between quotes and handle escaping
-                content = chunk[3:-2]  # Remove the '0:"' prefix and '"\n' suffix
-                content = content.replace("\\n", "\n").replace('\\"', '"')
-
-                # If this is the first chunk + separator
-                if not response_started and "__LLM_RESPONSE__" in content:
-                    # Only keep the part after the separator
-                    parts = content.split("__LLM_RESPONSE__")
-                    if len(parts) > 1:
-                        content = parts[1]
-                    response_started = True
-
-                full_response += content
-
-            elif chunk.startswith("3:"):
-                # Error message
-                error_content = chunk[2:]
-                return f"Error: {error_content}"
+        async for event in self.process_query_stream(query, use_reranking):
+            if event.type == StreamEventType.TEXT_DELTA:
+                full_response += event.data
+            elif event.type == StreamEventType.ERROR:
+                return f"Error: {event.data}"
 
         return full_response

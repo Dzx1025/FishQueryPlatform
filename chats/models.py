@@ -51,6 +51,11 @@ class Message(models.Model):
         choices=MessageType.choices,
         default=MessageType.USER,
     )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Additional data such as sources for assistant messages",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
