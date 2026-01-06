@@ -25,6 +25,7 @@ dependencies = [
     "openai>=1.102.0",
     "qdrant-client>=1.15.1",
     "sentence-transformers>=5.1.0",
+    "httpx>=0.28.1",
 ]
 
 [project.optional-dependencies]

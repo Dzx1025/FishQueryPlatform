@@ -1,10 +1,23 @@
-import os
-import time
+"""
+RAG (Retrieval Augmented Generation) Service Module.
+
+This module provides AI-powered question answering with citation support:
+1. Vector search via Qdrant for semantic document retrieval
+2. Cross-encoder reranking for improved relevance
+3. LLM response generation with inline citations [citation:N]
+
+All I/O operations are async to avoid blocking the event loop.
+CPU-bound operations (reranking) run in a thread pool.
+"""
+
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
-from typing import AsyncGenerator, Any
+from typing import AsyncGenerator, Any, TypedDict
 
-import requests
+import httpx
+from django.conf import settings
 from loguru import logger
 from qdrant_client import AsyncQdrantClient
 from sentence_transformers import CrossEncoder
@@ -13,61 +26,106 @@ from openai.types.responses import EasyInputMessageParam
 
 
 class StreamEventType(Enum):
-    """Stream event types for RAG responses."""
+    """
+    Stream event types for RAG responses.
 
-    SOURCES = "sources"  # Retrieved source documents
-    TEXT_DELTA = "text"  # LLM text chunk
-    DONE = "done"  # Stream complete
-    ERROR = "error"  # Error occurred
+    Used by views.py to format SSE or AI SDK protocol responses.
+    """
+
+    SOURCES = "sources"  # Retrieved source documents for citation lookup
+    TEXT_DELTA = "text"  # Incremental LLM text chunk
+    DONE = "done"  # Stream completed successfully
+    ERROR = "error"  # Error occurred during processing
 
 
 @dataclass
 class SourceDocument:
-    """Represents a retrieved source document."""
+    """
+    Represents a retrieved source document.
 
-    index: int  # 1-based index for citation reference
-    content: str  # Document content
-    metadata: dict  # Document metadata (url, title, etc.)
-    score: float  # Relevance score
+    Attributes:
+        index: 1-based index for citation reference (e.g., [citation:1])
+        content: Full document content
+        metadata: Document metadata (url, title, etc.)
+        score: Relevance score (rerank_score if reranked, else vector similarity)
+    """
+
+    index: int
+    content: str
+    metadata: dict
+    score: float
 
 
 @dataclass
 class StreamEvent:
-    """Structured stream event data."""
+    """
+    Structured stream event for RAG responses.
+
+    Decouples business logic from transport format.
+    Views layer converts these to SSE or AI SDK protocol.
+    """
 
     type: StreamEventType
     data: dict | str | list | None = None
 
 
+class SourceDict(TypedDict):
+    """Type definition for source data sent to frontend."""
+
+    index: int
+    content: str
+    metadata: dict
+    score: float
+
+
+# Thread pool for CPU-bound operations (reranking model inference)
+# Limited to 2 workers to avoid memory issues with model loading
+_rerank_executor = ThreadPoolExecutor(max_workers=2)
+
+
 class AIService:
     """
-    Service class for handling AI-powered RAG (Retrieval Augmented Generation) capabilities.
-    This service encapsulates vector search, reranking, and LLM functionalities.
+    Service class for AI-powered RAG (Retrieval Augmented Generation).
+
+    Responsibilities:
+    - Generate query embeddings via Nomic API
+    - Search Qdrant vector database for relevant documents
+    - Rerank results using cross-encoder model
+    - Generate streaming LLM responses with citations
+
+    All clients are lazy-loaded on first use.
+
+    Usage:
+        service = AIService()
+        async for event in service.process_query_stream("What is the bag limit?"):
+            # Handle StreamEvent
     """
 
     def __init__(self):
-        """Initialize the AIService with configuration."""
+        """
+        Initialize AIService with configuration from Django settings.
+        """
         # Qdrant configuration
-        self.qdrant_url = os.environ.get("QDRANT_URL")
-        self.collection_name = os.environ.get("COLLECTION_NAME")
-        self.qdrant_api_key = os.environ.get("QDRANT_API_KEY")
+        self.qdrant_url = settings.QDRANT_URL
+        self.collection_name = settings.QDRANT_COLLECTION_NAME
+        self.qdrant_api_key = settings.QDRANT_API_KEY
 
         # Embedding configuration
-        self.nomic_token = os.environ.get("NOMIC_TOKEN")
-        self.nomic_url = "https://api-atlas.nomic.ai/v1/embedding/text"
-        self.nomic_model = os.environ.get("EMBEDDING_MODEL")
-        self.task_type = "search_query"
-        self.vector_size = 768
+        self.nomic_token = settings.NOMIC_TOKEN
+        self.nomic_url = settings.NOMIC_API_URL
+        self.nomic_model = settings.NOMIC_EMBEDDING_MODEL
+        self.task_type = settings.NOMIC_TASK_TYPE
+        self.vector_size = settings.NOMIC_EMBEDDING_DIMENSION
 
         # Reranking configuration
-        self.rerank_model_name = os.environ.get("RERANK_MODEL")
-        self.top_k = int(os.environ.get("TOP_K", 10))
-        self.rerank_top_k = int(os.environ.get("RERANK_TOP_K", 5))
+        self.rerank_model_name = settings.RERANK_MODEL
+        self.top_k = settings.RAG_TOP_K
+        self.rerank_top_k = settings.RAG_RERANK_TOP_K
 
         # LLM configuration
-        self.openai_api_key = os.environ.get("OPENAI_API_KEY")
-        self.openai_api_url = os.environ.get("OPENAI_API_URL")
-        self.openai_model = os.environ.get("OPENAI_MODEL")
+        self.openai_api_key = settings.OPENAI_API_KEY
+        self.openai_api_url = settings.OPENAI_API_URL
+        self.openai_model = settings.OPENAI_MODEL
 
         self._validate_config()
 
@@ -75,6 +133,7 @@ class AIService:
         self._qdrant_client = None
         self._rerank_model = None
         self._openai_client = None
+        self._http_client = None
 
     def _validate_config(self):
         """Validate that required configuration parameters are present."""
@@ -129,8 +188,29 @@ class AIService:
             )
         return self._openai_client
 
-    def get_query_embedding(self, query: str) -> list[float]:
-        """Generate embedding for the query text."""
+    @property
+    def http_client(self) -> httpx.AsyncClient:
+        """Lazy-loaded async HTTP client."""
+        if self._http_client is None:
+            self._http_client = httpx.AsyncClient(timeout=30.0)
+        return self._http_client
+
+    async def get_query_embedding(self, query: str) -> list[float]:
+        """
+        Generate embedding vector for the query text.
+
+        Uses Nomic API for embedding generation. Async to avoid blocking
+        the event loop during HTTP request.
+
+        Args:
+            query: User's question text
+
+        Returns:
+            768-dimensional embedding vector
+
+        Raises:
+            Exception: If embedding generation fails after retries
+        """
         logger.info(f"Generating embedding for query: {query}")
 
         headers = {
@@ -146,47 +226,58 @@ class AIService:
         }
 
         max_retries = 3
-        retry_count = 0
 
-        while retry_count < max_retries:
+        for attempt in range(max_retries):
             try:
-                response = requests.post(self.nomic_url, headers=headers, json=payload)
+                response = await self.http_client.post(
+                    self.nomic_url,
+                    headers=headers,
+                    json=payload,
+                )
 
                 if response.status_code == 200:
                     embedding = response.json()["embeddings"][0]
                     logger.success("Generated embedding for query successfully")
                     return embedding
                 elif response.status_code == 429:
-                    retry_count += 1
-                    wait_time = 2**retry_count
+                    wait_time = 2 ** (attempt + 1)
                     logger.warning(
                         f"Rate limited by Nomic API. Retrying in {wait_time} seconds..."
                     )
-                    time.sleep(wait_time)
+                    await asyncio.sleep(wait_time)
                 else:
                     logger.error(
                         f"Nomic API error: {response.status_code} - {response.text}"
                     )
                     raise Exception(f"Failed to get embedding: {response.text}")
-            except Exception as e:
-                retry_count += 1
-                if retry_count >= max_retries:
+
+            except httpx.RequestError as e:
+                if attempt >= max_retries - 1:
                     logger.error(
                         f"Failed to get embedding after {max_retries} retries: {e}"
                     )
                     raise
-                wait_time = 2**retry_count
+                wait_time = 2 ** (attempt + 1)
                 logger.warning(
                     f"Error connecting to Nomic API. Retrying in {wait_time} seconds... Error: {e}"
                 )
-                time.sleep(wait_time)
+                await asyncio.sleep(wait_time)
 
         raise Exception("Failed to generate embedding for query")
 
     async def search_qdrant(
         self, query_embedding: list[float], top_k: int | None = None
     ) -> list[dict]:
-        """Search Qdrant using the query embedding."""
+        """
+        Search Qdrant vector database for similar documents.
+
+        Args:
+            query_embedding: Query vector from get_query_embedding()
+            top_k: Number of results to retrieve (default: self.top_k)
+
+        Returns:
+            List of documents with page_content, metadata, and score
+        """
         if top_k is None:
             top_k = self.top_k
 
@@ -216,26 +307,55 @@ class AIService:
             logger.error(f"Failed to search Qdrant: {e}")
             raise
 
-    def rerank_results(
+    def _rerank_sync(self, query: str, documents: list[dict], top_k: int) -> list[dict]:
+        """
+        Synchronous reranking using cross-encoder model.
+
+        This is CPU-bound (model inference), called via run_in_executor
+        in rerank_results() to avoid blocking the event loop.
+        """
+        pairs = [(query, doc["page_content"]) for doc in documents]
+        scores = self.rerank_model.predict(pairs)
+
+        for i, score in enumerate(scores):
+            documents[i]["rerank_score"] = float(score)
+
+        reranked_documents = sorted(
+            documents, key=lambda x: x["rerank_score"], reverse=True
+        )
+        return reranked_documents[:top_k]
+
+    async def rerank_results(
         self, query: str, documents: list[dict], top_k: int | None = None
     ) -> list[dict]:
-        """Rerank the results using a cross-encoder model."""
+        """
+        Rerank documents using cross-encoder model (async wrapper).
+
+        Runs CPU-bound inference in thread pool to avoid blocking.
+        Falls back to original vector similarity scores on error.
+
+        Args:
+            query: User's question
+            documents: Documents from vector search
+            top_k: Number of top results to return
+
+        Returns:
+            Reranked documents with rerank_score field added
+        """
         if top_k is None:
             top_k = self.rerank_top_k
 
         logger.info(f"Reranking {len(documents)} documents")
 
         try:
-            pairs = [(query, doc["page_content"]) for doc in documents]
-            scores = self.rerank_model.predict(pairs)
-
-            for i, score in enumerate(scores):
-                documents[i]["rerank_score"] = float(score)
-
-            reranked_documents = sorted(
-                documents, key=lambda x: x["rerank_score"], reverse=True
+            loop = asyncio.get_event_loop()
+            top_results = await loop.run_in_executor(
+                _rerank_executor,
+                self._rerank_sync,
+                query,
+                documents,
+                top_k,
             )
-            top_results = reranked_documents[:top_k]
             logger.success(
                 f"Reranked documents and selected top {len(top_results)} results"
             )
@@ -246,7 +366,11 @@ class AIService:
             return sorted(documents, key=lambda x: x["score"], reverse=True)[:top_k]
 
     def _build_sources(self, documents: list[dict]) -> list[SourceDocument]:
-        """Convert raw documents to SourceDocument objects with 1-based indices."""
+        """
+        Convert raw documents to SourceDocument objects.
+
+        Assigns 1-based indices for citation references (e.g., [citation:1]).
+        """
         return [
             SourceDocument(
                 index=i + 1,
@@ -260,7 +384,11 @@ class AIService:
     def _get_response_instruction(self) -> str:
         """
         Get the system instruction for LLM response generation.
-        Instructs LLM to use [citation:N] format for inline citations.
+
+        Instructs the LLM to:
+        - Use [citation:N] format for inline citations
+        - Cite every factual claim
+        - Be concise and professional
         """
         return (
             "You are an expert in Australian recreational fishing regulations, particularly those published by "
@@ -296,7 +424,6 @@ class AIService:
         2. TEXT_DELTA events - LLM response chunks with inline [citation:N] markers
         3. DONE event - Stream complete
         """
-        # Build context from sources
         formatted_context = "\n\n".join(
             f"[Context {src.index}]: {src.content}" for src in sources
         )
@@ -307,8 +434,7 @@ class AIService:
         ]
 
         try:
-            # 1. Yield sources first so frontend can build citation lookup
-            sources_data = [
+            sources_data: list[SourceDict] = [
                 {
                     "index": src.index,
                     "content": (
@@ -323,16 +449,15 @@ class AIService:
             ]
             yield StreamEvent(type=StreamEventType.SOURCES, data=sources_data)
 
-            # 2. Prepare LLM request
             kwargs: dict[str, Any] = dict(
                 model=self.openai_model,
                 input=messages,
                 instructions=self._get_response_instruction(),
-                max_output_tokens=1024,
+                max_output_tokens=4096,
                 stream=True,
             )
 
-            NO_TEMPERATURE_MODELS = {
+            if self.openai_model not in {
                 "gpt-5",
                 "gpt-5.1",
                 "gpt-5.2",
@@ -346,19 +471,15 @@ class AIService:
                 "gpt-5-codex",
                 "gpt-5-pro",
                 "gpt-5.2-pro",
-            }
-
-            if self.openai_model not in NO_TEMPERATURE_MODELS:
+            }:
                 kwargs["temperature"] = 0.1
 
             stream = await self.openai_client.responses.create(**kwargs)
 
-            # 3. Stream text chunks with inline citations
             async for event in stream:
                 if event.type == "response.output_text.delta":
                     yield StreamEvent(type=StreamEventType.TEXT_DELTA, data=event.delta)
 
-            # 4. Done
             yield StreamEvent(type=StreamEventType.DONE, data={"finishReason": "stop"})
 
         except Exception as e:
@@ -369,17 +490,27 @@ class AIService:
         self, query: str, use_reranking: bool = True
     ) -> AsyncGenerator[StreamEvent, None]:
         """
-        Process a query and yield structured StreamEvent objects.
+        Main entry point for streaming RAG responses.
 
-        This is the main entry point for streaming RAG responses.
-        The stream includes sources first, then text with inline citations.
+        Pipeline:
+        1. Generate query embedding
+        2. Search Qdrant for relevant documents
+        3. Rerank results (optional)
+        4. Stream LLM response with citations
+
+        Args:
+            query: User's question
+            use_reranking: Whether to apply cross-encoder reranking
+
+        Yields:
+            StreamEvent objects (SOURCES, TEXT_DELTA, DONE, or ERROR)
         """
         try:
-            query_embedding = self.get_query_embedding(query)
+            query_embedding = await self.get_query_embedding(query)
             search_results = await self.search_qdrant(query_embedding)
 
             if use_reranking and search_results:
-                final_results = self.rerank_results(query, search_results)
+                final_results = await self.rerank_results(query, search_results)
             else:
                 final_results = sorted(
                     search_results, key=lambda x: x["score"], reverse=True
@@ -395,7 +526,6 @@ class AIService:
                 )
                 return
 
-            # Convert to SourceDocument objects
             sources = self._build_sources(final_results)
 
             async for event in self.generate_response_stream(query, sources):
@@ -408,7 +538,9 @@ class AIService:
     async def process_query(self, query: str, use_reranking: bool = True) -> str:
         """
         Process a query and return the complete response as a string.
-        Suitable for non-streaming use cases.
+
+        Non-streaming alternative to process_query_stream().
+        Useful for testing or non-interactive use cases.
         """
         full_response = ""
 
@@ -419,3 +551,36 @@ class AIService:
                 return f"Error: {event.data}"
 
         return full_response
+
+    async def close(self):
+        """
+        Close async resources (HTTP client).
+
+        Call this when shutting down to properly release connections.
+        """
+        if self._http_client:
+            await self._http_client.aclose()
+
+
+# --- Singleton Instance ---
+_ai_service_instance: AIService | None = None
+
+
+def get_ai_service() -> AIService:
+    """
+    Get the singleton AIService instance.
+
+    Avoids repeated initialization of lazy-loaded clients (Qdrant, OpenAI, etc.)
+    across requests.
+
+    Usage:
+        from chats.services import get_ai_service
+
+        ai_service = get_ai_service()
+        async for event in ai_service.process_query_stream(query):
+            ...
+    """
+    global _ai_service_instance
+    if _ai_service_instance is None:
+        _ai_service_instance = AIService()
+    return _ai_service_instance

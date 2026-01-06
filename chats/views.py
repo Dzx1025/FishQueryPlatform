@@ -4,6 +4,7 @@ from datetime import timedelta
 from uuid import UUID
 
 from asgiref.sync import sync_to_async
+from django.conf import settings
 from django.core.cache import cache
 from django.http import StreamingHttpResponse, JsonResponse
 from django.utils import timezone
@@ -15,55 +16,135 @@ from loguru import logger
 from chats.utils import generate_title_from_message
 
 from .models import Chat, Message, MessageType
-from .services import AIService, StreamEvent, StreamEventType
+from .services import get_ai_service, StreamEvent, StreamEventType
 
-# --- Constants ---
-GlobalDailyMessageLimit = 30
-MessageMaxLength = 200
-DeviceCookieMaxAge = 365 * 24 * 60 * 60  # 1 year in seconds
+# --- Constants (from Django settings) ---
+GlobalDailyMessageLimit = settings.CHAT_DAILY_MESSAGE_LIMIT
+MessageMaxLength = settings.CHAT_MESSAGE_MAX_LENGTH
 
 
 # --- Stream Formatters ---
-def format_ai_sdk_stream(event: StreamEvent) -> str:
+class AISDKStreamFormatter:
     """
-    Format StreamEvent to Vercel AI SDK Data Stream Protocol.
+    Formatter for Vercel AI SDK UI Message Stream Protocol (SSE-based).
 
-    Protocol format: TYPE:VALUE\n
-    - 0: Text chunk (value must be JSON string)
-    - 2: Data chunk (value is JSON array) - used for sources
-    - d: Done signal (value is JSON object)
-    - 3: Error (value is JSON string)
+    Protocol uses Server-Sent Events with specific event types:
+    - message-start: Begin new message
+    - text-start/text-delta/text-end: Text streaming
+    - source: Source documents for RAG citations
+    - error: Error information
+    - finish-message: Message completion
+    - [DONE]: Stream termination
 
-    Frontend can parse [citation:N] markers in text and lookup source by index.
+    See: https://sdk.vercel.ai/docs/ai-sdk-ui/stream-protocol
     """
-    match event.type:
-        case StreamEventType.SOURCES:
-            # Type 2: Data chunk for sources array
-            # Frontend uses this to build citation lookup map
-            return f"2:{json.dumps([{'sources': event.data}])}\n"
 
-        case StreamEventType.TEXT_DELTA:
-            # Type 0: Text chunk with potential [citation:N] markers
-            return f"0:{json.dumps(event.data)}\n"
+    def __init__(self):
+        self.message_id = f"msg-{id(self)}"
+        self.text_id = f"text-{id(self)}"
+        self.text_started = False
 
-        case StreamEventType.DONE:
-            return f"d:{json.dumps(event.data)}\n"
+    def format_message_start(self) -> str:
+        """Send message-start event."""
+        data = json.dumps(
+            {
+                "type": "message-start",
+                "value": {"id": self.message_id, "role": "assistant"},
+            }
+        )
+        return f"event: message-start\ndata: {data}\n\n"
 
-        case StreamEventType.ERROR:
-            return f"3:{json.dumps(event.data)}\n"
+    def format_text_start(self) -> str:
+        """Send text-start event."""
+        data = json.dumps({"type": "text-start", "value": {"id": self.text_id}})
+        return f"event: text-start\ndata: {data}\n\n"
 
-        case _:
-            return ""
+    def format_text_delta(self, content: str) -> str:
+        """Send text-delta event."""
+        data = json.dumps(
+            {"type": "text-delta", "value": {"id": self.text_id, "delta": content}}
+        )
+        return f"event: text-delta\ndata: {data}\n\n"
+
+    def format_text_end(self) -> str:
+        """Send text-end event."""
+        data = json.dumps({"type": "text-end", "value": {"id": self.text_id}})
+        return f"event: text-end\ndata: {data}\n\n"
+
+    def format_source(self, source: dict) -> str:
+        """Send source event for RAG citations."""
+        data = json.dumps(
+            {
+                "type": "source",
+                "value": {
+                    "type": "source",
+                    "sourceType": "document",
+                    "id": f"source-{source['index']}",
+                    "title": source.get("metadata", {}).get(
+                        "title", f"Source {source['index']}"
+                    ),
+                    "document": {
+                        "content": source["content"],
+                        "metadata": source.get("metadata", {}),
+                        "score": source.get("score", 0),
+                        "index": source["index"],
+                    },
+                },
+            }
+        )
+        return f"event: source\ndata: {data}\n\n"
+
+    def format_error(self, error: str) -> str:
+        """Send error event."""
+        data = json.dumps({"type": "error", "value": {"message": error}})
+        return f"event: error\ndata: {data}\n\n"
+
+    def format_finish_message(self) -> str:
+        """Send finish-message event."""
+        data = json.dumps(
+            {
+                "type": "finish-message",
+                "value": {"id": self.message_id, "finishReason": "stop"},
+            }
+        )
+        return f"event: finish-message\ndata: {data}\n\n"
+
+    def format_done(self) -> str:
+        """Send [DONE] termination marker."""
+        return "event: done\ndata: [DONE]\n\n"
+
+    def format(self, event: StreamEvent) -> str:
+        """Format a StreamEvent to AI SDK protocol."""
+        result = ""
+
+        match event.type:
+            case StreamEventType.SOURCES:
+                for source in event.data:
+                    result += self.format_source(source)
+
+            case StreamEventType.TEXT_DELTA:
+                if not self.text_started:
+                    result += self.format_message_start()
+                    result += self.format_text_start()
+                    self.text_started = True
+                result += self.format_text_delta(event.data)
+
+            case StreamEventType.DONE:
+                if self.text_started:
+                    result += self.format_text_end()
+                result += self.format_finish_message()
+                result += self.format_done()
+
+            case StreamEventType.ERROR:
+                result += self.format_error(event.data)
+                result += self.format_done()
+
+        return result
 
 
 def format_sse_stream(event: StreamEvent, event_id: int) -> str:
     """
     Format StreamEvent to standard Server-Sent Events format.
-
-    SSE format:
-    id: <event_id>
-    event: <event_type>
-    data: <json_data>
 
     Event types:
     - sources: Array of source documents for citation lookup
@@ -106,12 +187,10 @@ class ChatBaseView(View):
         if device_id:
             return device_id
 
-        # Fallback to browser fingerprint header
         browser_fingerprint = request.headers.get("X-Browser-Fingerprint")
         if browser_fingerprint:
             return f"fp_{browser_fingerprint}"
 
-        # Last resort: generate from IP and User-Agent
         ip = request.META.get(
             "HTTP_X_FORWARDED_FOR", request.META.get("REMOTE_ADDR", "unknown")
         )
@@ -121,9 +200,7 @@ class ChatBaseView(View):
 
     @staticmethod
     def get_user_or_identity(request):
-        """
-        Gets the authenticated user. If the user is anonymous, returns a stable device ID.
-        """
+        """Gets the authenticated user or stable device ID for anonymous users."""
         user = getattr(request, "user", None)
         if user and user.is_authenticated:
             logger.debug(
@@ -161,17 +238,14 @@ class ChatBaseView(View):
             response.set_cookie(
                 "device_id",
                 device_id,
-                max_age=DeviceCookieMaxAge,
+                max_age=settings.CHAT_DEVICE_COOKIE_MAX_AGE,
                 httponly=True,
                 samesite="Lax",
             )
         return response
 
     async def check_throttle_async(self, request):
-        """
-        Asynchronously checks message rate limits for both authenticated and anonymous users.
-        Uses atomic cache operations for anonymous users to prevent race conditions.
-        """
+        """Asynchronously checks message rate limits."""
         user, device_id = self.get_user_or_identity(request)
 
         if user:
@@ -266,22 +340,16 @@ class ChatMessageView(ChatBaseView):
     Handles sending a message to an existing chat and streams the AI response.
 
     Supports two stream protocols:
-    1. AI SDK Data Stream Protocol (X-Stream-Protocol: ai-sdk)
+    1. AI SDK UI Message Stream Protocol (X-Stream-Protocol: ai-sdk)
     2. Standard Server-Sent Events (default)
 
-    Response format:
-    - First event: sources array for citation lookup
-    - Following events: text chunks with inline [citation:N] markers
-    - Final event: done signal
-
-    Frontend should:
-    1. Store sources from first event
-    2. Parse [citation:N] in text and render as clickable links
-    3. Lookup source details by index when user clicks citation
+    Response includes:
+    - Source documents for RAG citation lookup
+    - Text chunks with inline [citation:N] markers
+    - Completion signal
     """
 
     async def post(self, request, chat_id: UUID):
-        # Pre-flight checks
         allow, error_response = await self.check_throttle_async(request)
         if not allow:
             return error_response
@@ -292,7 +360,6 @@ class ChatMessageView(ChatBaseView):
 
         user, device_id = self.get_user_or_identity(request)
 
-        # Retrieve chat object
         try:
             if user:
                 chat = await Chat.objects.aget(id=chat_id, user=user)
@@ -303,55 +370,65 @@ class ChatMessageView(ChatBaseView):
                 {"error": "Chat not found or permission denied."}, status=404
             )
 
-        # Save user message
         await Message.objects.acreate(
             chat=chat, content=message_content, message_type=MessageType.USER
         )
         if user and hasattr(user, "increment_message_count"):
             await sync_to_async(user.increment_message_count)()
 
-        # Determine stream format based on client header
         use_ai_sdk_format = request.headers.get("X-Stream-Protocol") == "ai-sdk"
-
-        ai_service = AIService()
+        ai_service = get_ai_service()
 
         async def event_stream_generator():
             full_response_content = ""
             sources_data = None
             event_id = 1
+            client_disconnected = False
+
+            # Create formatter instance for AI SDK (maintains state)
+            ai_sdk_formatter = AISDKStreamFormatter() if use_ai_sdk_format else None
 
             try:
                 async for event in ai_service.process_query_stream(message_content):
-                    # Collect sources for database persistence
                     if event.type == StreamEventType.SOURCES:
                         sources_data = event.data
 
-                    # Collect text for database persistence
                     if event.type == StreamEventType.TEXT_DELTA:
                         full_response_content += event.data
 
-                    # Format and yield based on protocol
                     if use_ai_sdk_format:
-                        yield format_ai_sdk_stream(event)
+                        yield ai_sdk_formatter.format(event)
                     else:
                         yield format_sse_stream(event, event_id)
                         event_id += 1
 
+            except GeneratorExit:
+                # Client disconnected (e.g., AbortController.abort() called)
+                client_disconnected = True
+                logger.info(f"Client disconnected during stream for chat {chat_id}")
+
             except Exception as e:
-                logger.error(f"Streaming error for chat {chat_id}: {e}")
-                error_event = StreamEvent(type=StreamEventType.ERROR, data=str(e))
-                if use_ai_sdk_format:
-                    yield format_ai_sdk_stream(error_event)
+                error_str = str(e).lower()
+                if "disconnect" in error_str or "closed" in error_str:
+                    client_disconnected = True
+                    logger.info(f"Client disconnected for chat {chat_id}: {e}")
                 else:
-                    yield format_sse_stream(error_event, event_id)
+                    logger.error(f"Streaming error for chat {chat_id}: {e}")
+                    error_event = StreamEvent(type=StreamEventType.ERROR, data=str(e))
+                    if use_ai_sdk_format:
+                        yield ai_sdk_formatter.format(error_event)
+                    else:
+                        yield format_sse_stream(error_event, event_id)
 
             finally:
-                # Persist assistant response with sources to database
+                # Save partial response even if client disconnected
                 if full_response_content:
                     try:
                         metadata = {}
                         if sources_data:
                             metadata["sources"] = sources_data
+                        if client_disconnected:
+                            metadata["client_disconnected"] = True
 
                         await Message.objects.acreate(
                             chat=chat,
@@ -359,20 +436,21 @@ class ChatMessageView(ChatBaseView):
                             message_type=MessageType.ASSISTANT,
                             metadata=metadata,
                         )
-                        logger.success(f"Assistant message saved for chat {chat_id}")
+                        if client_disconnected:
+                            logger.info(
+                                f"Partial assistant message saved for chat {chat_id} (client disconnected)"
+                            )
+                        else:
+                            logger.success(
+                                f"Assistant message saved for chat {chat_id}"
+                            )
                     except Exception as db_error:
                         logger.error(
                             f"Failed to save assistant message for chat {chat_id}: {db_error}"
                         )
 
-        # Configure response based on format
-        if use_ai_sdk_format:
-            content_type = "text/plain; charset=utf-8"
-        else:
-            content_type = "text/event-stream"
-
         response = StreamingHttpResponse(
-            event_stream_generator(), content_type=content_type
+            event_stream_generator(), content_type="text/event-stream"
         )
         response["Cache-Control"] = "no-cache"
         response["X-Accel-Buffering"] = "no"
