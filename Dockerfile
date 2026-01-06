@@ -49,8 +49,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user for security
-RUN groupadd -r django-user && useradd -r -g django-user django-user
+# Create a non-root user for security with home directory for model cache
+RUN groupadd -r django-user && useradd -r -g django-user -m django-user
+
+# Set HuggingFace cache directory
+ENV HF_HOME=/home/django-user/.cache/huggingface \
+    TRANSFORMERS_CACHE=/home/django-user/.cache/huggingface
 
 WORKDIR /app
 
