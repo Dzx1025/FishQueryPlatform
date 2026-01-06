@@ -27,6 +27,7 @@ AUTHENTICATION_BACKENDS = [
 ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
+    "django",
     "django.fishquery.dzx1025.com",
     "fishquery.dzx1025.com",
 ]
@@ -195,3 +196,8 @@ RAG_RERANK_TOP_K = int(os.environ.get("RERANK_TOP_K", 5))  # Documents after rer
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 OPENAI_API_URL = os.environ.get("OPENAI_API_URL")  # Optional: custom endpoint
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL")
+
+# =============================================================================
+# Hasura Settings
+# =============================================================================
+HASURA_ADMIN_SECRET = os.environ.get("HASURA_ADMIN_SECRET")

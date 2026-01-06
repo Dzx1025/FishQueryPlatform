@@ -1,8 +1,12 @@
 from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.conf import settings
 
 from .responses import APIResponse
@@ -181,3 +185,63 @@ class UserProfileAPIView(APIView):
             )
 
         return APIResponse.error(errors=serializer.errors, message="Validation error")
+
+
+# --- Hasura Auth Webhook ---
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def hasura_auth_webhook(request):
+    """
+    Hasura authentication webhook.
+
+    Validates JWT from cookie and returns Hasura session variables.
+    Also supports admin secret for Hasura Console access.
+
+    Returns:
+        - X-Hasura-Role: 'admin', 'user', or 'anonymous'
+        - X-Hasura-User-Id: User ID (only for authenticated users)
+    """
+    # Check for admin secret (for Hasura Console)
+    admin_secret = request.headers.get("X-Hasura-Admin-Secret")
+    if admin_secret and admin_secret == settings.HASURA_ADMIN_SECRET:
+        return Response(
+            {
+                "X-Hasura-Role": "admin",
+            }
+        )
+
+    # Check for JWT in cookie
+    access_cookie_name = settings.SIMPLE_JWT.get("AUTH_COOKIE", "access_token")
+    access_token = request.COOKIES.get(access_cookie_name)
+
+    if not access_token:
+        return Response(
+            {
+                "X-Hasura-Role": "anonymous",
+            }
+        )
+
+    try:
+        jwt_auth = JWTAuthentication()
+        validated_token = jwt_auth.get_validated_token(access_token)
+        user = jwt_auth.get_user(validated_token)
+
+        return Response(
+            {
+                "X-Hasura-Role": "user",
+                "X-Hasura-User-Id": str(user.id),
+            }
+        )
+
+    except TokenError:
+        return Response(
+            {
+                "X-Hasura-Role": "anonymous",
+            }
+        )
+    except Exception:
+        return Response(
+            {
+                "X-Hasura-Role": "anonymous",
+            }
+        )

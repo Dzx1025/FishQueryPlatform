@@ -5,6 +5,7 @@ from .views import (
     RegisterAPIView,
     LogoutAPIView,
     UserProfileAPIView,
+    hasura_auth_webhook,
 )
 
 urlpatterns = [
@@ -13,4 +14,5 @@ urlpatterns = [
     path("register/", RegisterAPIView.as_view(), name="register"),
     path("logout/", LogoutAPIView.as_view(), name="logout"),
     path("profile/", UserProfileAPIView.as_view(), name="profile"),
+    path("hasura-webhook/", hasura_auth_webhook, name="hasura_auth_webhook"),
 ]
