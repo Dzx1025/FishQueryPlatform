@@ -13,5 +13,6 @@ select_permissions:
         - content
         - created_at
         - message_type
+        - metadata
       filter: {}
     comment: ""

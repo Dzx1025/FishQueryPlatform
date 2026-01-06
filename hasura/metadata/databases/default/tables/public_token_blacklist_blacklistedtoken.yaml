@@ -1,0 +1,3 @@
+table:
+  name: token_blacklist_blacklistedtoken
+  schema: public
