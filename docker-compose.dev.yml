@@ -28,13 +28,12 @@ services:
       - ./hasura/:/hasura/
     environment:
       HASURA_GRAPHQL_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgis:5432/${POSTGRES_DB}
-      HASURA_GRAPHQL_ENABLE_CONSOLE: "true" # Enabled console for development
-      HASURA_GRAPHQL_DEV_MODE: "true" # Enabled dev mode
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "true"
+      HASURA_GRAPHQL_DEV_MODE: "true"
       HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_ADMIN_SECRET}
-      HASURA_GRAPHQL_UNAUTHORIZED_ROLE: anonymous
-      HASURA_GRAPHQL_JWT_SECRET: ${HASURA_JWT_SECRET}
+      HASURA_GRAPHQL_AUTH_HOOK: http://django:8000/api/auth/hasura-webhook/
       HASURA_GRAPHQL_ENABLE_TELEMETRY: "false"
-      HASURA_GRAPHQL_LOG_LEVEL: debug # Changed to debug
+      HASURA_GRAPHQL_LOG_LEVEL: debug
       HASURA_GRAPHQL_METADATA_DIR: /hasura/metadata
 
   django:
@@ -55,8 +54,8 @@ services:
     volumes:
       - .:/app # Added volume mount for hot reload
       - venv_data:/app/.venv # Persist virtual environment
-    command: python manage.py runserver 0.0.0.0:8000
-#    command: uvicorn FishQueryPlatform.asgi:application --reload --host 0.0.0.0 --port 8000
+    #    command: python manage.py runserver 0.0.0.0:8000
+    command: uvicorn FishQueryPlatform.asgi:application --reload --host 0.0.0.0 --port 8000
 
 volumes:
   postgis-data:
