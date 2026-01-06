@@ -9,3 +9,10 @@ array_relationships:
         table:
           name: chats_chat
           schema: public
+  - name: token_blacklist_outstandingtokens
+    using:
+      foreign_key_constraint_on:
+        column: user_id
+        table:
+          name: token_blacklist_outstandingtoken
+          schema: public

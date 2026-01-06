@@ -1,6 +1,10 @@
 table:
   name: chats_chat
   schema: public
+object_relationships:
+  - name: core_customuser
+    using:
+      foreign_key_constraint_on: user_id
 array_relationships:
   - name: chats_messages
     using:
