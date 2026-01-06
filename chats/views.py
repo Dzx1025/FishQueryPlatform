@@ -215,6 +215,26 @@ class ChatBaseView(View):
         return None, device_id
 
     @staticmethod
+    async def get_user_or_identity_async(request):
+        """Async version: Gets the authenticated user or stable device ID for anonymous users."""
+        user = getattr(request, "user", None)
+        # Wrap the is_authenticated check in sync_to_async to avoid SynchronousOnlyOperation
+        if user:
+            is_auth = await sync_to_async(lambda: user.is_authenticated)()
+            if is_auth:
+                username = await sync_to_async(lambda: user.username)()
+                logger.debug(
+                    f"get_user_or_identity found authenticated user: {username}"
+                )
+                return user, None
+
+        device_id = ChatBaseView._get_device_id(request)
+        logger.debug(
+            f"get_user_or_identity found anonymous user, device_id: {device_id}"
+        )
+        return None, device_id
+
+    @staticmethod
     def parse_request_data(request):
         """Parses and validates message content from the request body."""
         try:
@@ -246,7 +266,7 @@ class ChatBaseView(View):
 
     async def check_throttle_async(self, request):
         """Asynchronously checks message rate limits."""
-        user, device_id = self.get_user_or_identity(request)
+        user, device_id = await self.get_user_or_identity_async(request)
 
         if user:
             can_send = await sync_to_async(user.can_send_message)()
@@ -358,7 +378,7 @@ class ChatMessageView(ChatBaseView):
         if error_response:
             return error_response
 
-        user, device_id = self.get_user_or_identity(request)
+        user, device_id = await self.get_user_or_identity_async(request)
 
         try:
             if user:
