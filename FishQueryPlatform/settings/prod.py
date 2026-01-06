@@ -38,6 +38,7 @@ CORS_ALLOW_HEADERS = [
     "user-agent",
     "x-csrftoken",
     "x-requested-with",
+    "x-stream-protocol",
 ]
 
 # CSRF settings

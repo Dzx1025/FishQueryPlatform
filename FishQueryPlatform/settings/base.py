@@ -162,3 +162,36 @@ SWAGGER_SETTINGS = {
         }
     }
 }
+
+# =============================================================================
+# Chat Settings
+# =============================================================================
+CHAT_DAILY_MESSAGE_LIMIT = 30  # Daily message limit for anonymous users
+CHAT_MESSAGE_MAX_LENGTH = 200  # Maximum characters per message
+CHAT_DEVICE_COOKIE_MAX_AGE = 365 * 24 * 60 * 60  # 1 year in seconds
+
+# =============================================================================
+# RAG (Retrieval Augmented Generation) Settings
+# =============================================================================
+
+# Qdrant Vector Database
+QDRANT_URL = os.environ.get("QDRANT_URL")
+QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY")
+QDRANT_COLLECTION_NAME = os.environ.get("COLLECTION_NAME")
+
+# Nomic Embedding API
+NOMIC_TOKEN = os.environ.get("NOMIC_TOKEN")
+NOMIC_API_URL = "https://api-atlas.nomic.ai/v1/embedding/text"
+NOMIC_EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL")
+NOMIC_EMBEDDING_DIMENSION = 768
+NOMIC_TASK_TYPE = "search_query"
+
+# Reranking
+RERANK_MODEL = os.environ.get("RERANK_MODEL")
+RAG_TOP_K = int(os.environ.get("TOP_K", 10))  # Documents to retrieve
+RAG_RERANK_TOP_K = int(os.environ.get("RERANK_TOP_K", 5))  # Documents after reranking
+
+# LLM (OpenAI-compatible API)
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+OPENAI_API_URL = os.environ.get("OPENAI_API_URL")  # Optional: custom endpoint
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL")
