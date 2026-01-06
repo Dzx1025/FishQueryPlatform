@@ -1,0 +1,7 @@
+table:
+  name: token_blacklist_outstandingtoken
+  schema: public
+object_relationships:
+  - name: core_customuser
+    using:
+      foreign_key_constraint_on: user_id
