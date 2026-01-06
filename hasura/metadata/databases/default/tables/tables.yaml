@@ -1,4 +1,5 @@
 - "!include public_chats_chat.yaml"
 - "!include public_chats_message.yaml"
 - "!include public_core_customuser.yaml"
+- "!include public_token_blacklist_blacklistedtoken.yaml"
 - "!include public_token_blacklist_outstandingtoken.yaml"
