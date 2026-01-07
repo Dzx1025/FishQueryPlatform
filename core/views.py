@@ -18,6 +18,7 @@ from .serializers import (
     UserRegistrationSerializer,
     UserProfileSerializer,
 )
+from .throttles import RegisterThrottle, LoginThrottle, TokenRefreshThrottle
 
 
 def set_jwt_cookies(response, access_token, refresh_token=None):
@@ -56,6 +57,7 @@ def set_jwt_cookies(response, access_token, refresh_token=None):
 
 class LoginAPIView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+    throttle_classes = [LoginThrottle]
 
     def post(self, request, *args, **kwargs):
         try:
@@ -79,6 +81,7 @@ class LoginAPIView(TokenObtainPairView):
 
 class RegisterAPIView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [RegisterThrottle]
 
     def post(self, request):
         serializer = UserRegistrationSerializer(data=request.data)
@@ -133,6 +136,7 @@ class LogoutAPIView(APIView):
 
 class TokenRefreshView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [TokenRefreshThrottle]
 
     def post(self, request):
         refresh_token = request.COOKIES.get(

@@ -146,6 +146,9 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "anon": "10/minute",
         "user": "1000/day",
+        "register": "5/hour",
+        "login": "10/minute",
+        "token_refresh": "30/hour",
     },
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
