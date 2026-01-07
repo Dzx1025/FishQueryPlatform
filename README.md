@@ -25,7 +25,6 @@ git clone https://github.com/Dzx1025/FishQueryPlatform.git
 | NEO4J_PASSWORD        | neo4j password                             |
 | **Hasura Settings**   |                                            |
 | HASURA_ADMIN_SECRET   | hasura admin secret                        |
-| HASURA_JWT_SECRET     | {"type":"HS256","key":"django_secret_key"} |
 | **Qdrant Settings**   |                                            |
 | COLLECTION_NAME       | collection name                            |
 | **Django Settings**   |                                            |
