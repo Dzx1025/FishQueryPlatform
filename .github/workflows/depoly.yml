@@ -6,33 +6,9 @@ on:
 
 jobs:
   platform:
-    name: Deploy Platform
+    name: Deploy Platform (Normal Update)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Package codebase
-        run: |
-          tar czvf platform.tar.gz .
-
-      - name: Install SSH key
-        uses: shimataro/ssh-key-action@v2.7.0
-        with:
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          known_hosts: auto
-          if_key_exists: replace
-
-      - name: Upload codebase
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: 22
-          source: "platform.tar.gz"
-          target: ${{ secrets.DEPLOY_PATH }}
-
       - name: Deploy and restart
         uses: appleboy/ssh-action@master
         with:
@@ -42,8 +18,6 @@ jobs:
           port: 22
           script: |
             cd ${{ secrets.DEPLOY_PATH }}
-            docker compose down
-            tar xzvf platform.tar.gz
-            rm platform.tar.gz
-            cp ../.env .
-            docker compose up -d --build
+            git fetch origin main
+            git pull origin main
+            docker compose up -d --build django
