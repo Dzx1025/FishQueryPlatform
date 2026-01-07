@@ -1,12 +1,12 @@
-import json
 import hashlib
+import json
 from datetime import timedelta
 from uuid import UUID
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.core.cache import cache
-from django.http import StreamingHttpResponse, JsonResponse
+from django.http import JsonResponse, StreamingHttpResponse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views import View
@@ -16,7 +16,7 @@ from loguru import logger
 from chats.utils import generate_title_from_message
 
 from .models import Chat, Message, MessageType
-from .services import get_ai_service, StreamEvent, StreamEventType
+from .services import StreamEvent, StreamEventType, get_ai_service
 
 # --- Constants (from Django settings) ---
 GlobalDailyMessageLimit = settings.CHAT_DAILY_MESSAGE_LIMIT

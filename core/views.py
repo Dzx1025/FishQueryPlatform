@@ -1,24 +1,24 @@
 import secrets
 
-from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.conf import settings
 from loguru import logger
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .responses import APIResponse
 from .serializers import (
     CustomTokenObtainPairSerializer,
-    UserRegistrationSerializer,
     UserProfileSerializer,
+    UserRegistrationSerializer,
 )
-from .throttles import RegisterThrottle, LoginThrottle, TokenRefreshThrottle
+from .throttles import LoginThrottle, RegisterThrottle, TokenRefreshThrottle
 
 
 def set_jwt_cookies(response, access_token, refresh_token=None):

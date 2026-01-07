@@ -1,9 +1,10 @@
 import asyncio
+
+from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
-from rest_framework_simplejwt.authentication import JWTAuthentication
 from loguru import logger
-from asgiref.sync import sync_to_async
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 
 def get_user_from_jwt_token_sync(request):

@@ -1,7 +1,7 @@
+from django.contrib.auth import get_user_model
+from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from rest_framework import serializers
-from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
@@ -105,7 +105,6 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         """
         Override to exclude password from response
         """
-        data = super().to_representation(instance)
         return {"email": instance.email, "username": instance.username}
 
 

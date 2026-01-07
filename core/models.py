@@ -1,4 +1,3 @@
-from asgiref.sync import sync_to_async
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
 from django.utils import timezone

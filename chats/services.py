@@ -14,15 +14,15 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
-from typing import AsyncGenerator, Any, TypedDict
+from typing import Any, AsyncGenerator, TypedDict
 
 import httpx
 from django.conf import settings
 from loguru import logger
-from qdrant_client import AsyncQdrantClient
-from sentence_transformers import CrossEncoder
 from openai import AsyncOpenAI
 from openai.types.responses import EasyInputMessageParam
+from qdrant_client import AsyncQdrantClient
+from sentence_transformers import CrossEncoder
 
 
 class StreamEventType(Enum):

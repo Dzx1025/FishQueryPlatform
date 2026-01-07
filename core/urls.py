@@ -1,9 +1,10 @@
 from django.urls import path
+
 from .views import (
     LoginAPIView,
-    TokenRefreshView,
-    RegisterAPIView,
     LogoutAPIView,
+    RegisterAPIView,
+    TokenRefreshView,
     UserProfileAPIView,
     hasura_auth_webhook,
 )

@@ -1,5 +1,6 @@
 # chats/urls.py
 from django.urls import path
+
 from .views import ChatCreateView, ChatMessageView
 
 urlpatterns = [
