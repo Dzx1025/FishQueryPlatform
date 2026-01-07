@@ -1,3 +1,5 @@
+import secrets
+
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -8,6 +10,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.conf import settings
+from loguru import logger
 
 from .responses import APIResponse
 from .serializers import (
@@ -97,7 +100,7 @@ class RegisterAPIView(APIView):
 
 
 class LogoutAPIView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         try:
@@ -124,7 +127,8 @@ class LogoutAPIView(APIView):
             return response
 
         except Exception as e:
-            return APIResponse.error(errors=str(e), message="Logout failed")
+            logger.error(f"Logout failed: {e}")
+            return APIResponse.error(message="Logout failed")
 
 
 class TokenRefreshView(APIView):
@@ -203,7 +207,9 @@ def hasura_auth_webhook(request):
     """
     # Check for admin secret (for Hasura Console)
     admin_secret = request.headers.get("X-Hasura-Admin-Secret")
-    if admin_secret and admin_secret == settings.HASURA_ADMIN_SECRET:
+    if admin_secret and secrets.compare_digest(
+        admin_secret, settings.HASURA_ADMIN_SECRET
+    ):
         return Response(
             {
                 "X-Hasura-Role": "admin",
