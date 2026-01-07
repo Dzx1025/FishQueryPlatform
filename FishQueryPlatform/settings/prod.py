@@ -48,6 +48,7 @@ CORS_ALLOW_HEADERS = [
     "x-csrftoken",
     "x-requested-with",
     "x-stream-protocol",
+    "x-browser-fingerprint",
 ]
 
 # CSRF settings
