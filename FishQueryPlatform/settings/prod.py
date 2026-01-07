@@ -1,7 +1,14 @@
+import sys
+from loguru import logger
+
 from .base import *
 
 # Debug settings
 DEBUG = False
+
+# Loguru settings
+logger.remove()
+logger.add(sys.stderr, level="INFO")
 
 # Security settings
 SESSION_COOKIE_SECURE = True

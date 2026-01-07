@@ -1,7 +1,14 @@
+import sys
+from loguru import logger
+
 from .base import *
 
 # Debug settings
 DEBUG = True
+
+# Loguru settings
+logger.remove()
+logger.add(sys.stderr, level="DEBUG")
 
 # CORS settings
 CORS_ALLOW_ALL_ORIGINS = True
@@ -17,6 +24,7 @@ CORS_ALLOW_HEADERS = [
     "x-csrftoken",
     "x-requested-with",
     "x-stream-protocol",
+    "x-browser-fingerprint",
 ]
 
 # CSRF settings

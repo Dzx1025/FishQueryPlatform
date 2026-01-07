@@ -185,10 +185,12 @@ class ChatBaseView(View):
         """Generates a stable device ID for anonymous users."""
         device_id = request.COOKIES.get("device_id")
         if device_id:
+            logger.debug("get_device_id found from Cookies")
             return device_id
 
         browser_fingerprint = request.headers.get("X-Browser-Fingerprint")
         if browser_fingerprint:
+            logger.debug("get_device_id found from X-Browser-Fingerprint header")
             return f"fp_{browser_fingerprint}"
 
         ip = request.META.get(
@@ -196,6 +198,7 @@ class ChatBaseView(View):
         )
         partial_ip = ".".join(ip.split(".")[:2])
         ua = request.META.get("HTTP_USER_AGENT", "")
+        logger.debug("get_device_id generated new device_id")
         return f"ip_{hashlib.md5((partial_ip + ua).encode()).hexdigest()[:12]}"
 
     @staticmethod
